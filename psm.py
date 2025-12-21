@@ -871,76 +871,46 @@ def api_groq_analyze():
    - match_3: {home_team} vs Lens (match moyen)
 """
         
-        # Construire le prompt complet
-        prompt = f"""Tu es un expert en football français, météorologie et analyse de données sportives.
-
-MATCH À ANALYSER:
-- Équipes: {match_name}
-- Compétition: Ligue 1
-- Date: {date_formatted}
-- Stade: Parc des Princes
-- Contexte: {importance['rivalry']}
-- Importance: {'Match à très forte affluence' if importance['is_high_profile'] else 'Match d\'importance moyenne'}
-
-CONSIGNES D'ANALYSE:
-
-1. ANALYSE D'ANTICIPATION:
-   Analyse le niveau d'attente pour ce match spécifique "{match_name}".
-   {'Le Classique PSG-OM génère toujours une demande exceptionnelle (90-100%).' if importance['is_classico'] else ''}
-   {'PSG-OL est une affiche majeure de Ligue 1 (80-95%).' if importance['is_ol'] else ''}
-   {'PSG-Monaco est un match attractif (75-90%).' if importance['is_monaco'] else ''}
-   {'Pour un match moins médiatisé, ajuste les scores en conséquence (60-85%).' if not importance['is_high_profile'] else ''}
-   
-   - hype_score: niveau d'anticipation supporters (0-100)
-   - affluence_prevue: taux de remplissage estimé (0-100, base Parc des Princes = 90%+ pour gros matchs)
-   - probabilite_pmr: chance qu'une place PMR se libère (0-100, faible pour gros matchs)
-   - analyse: explication courte (2-3 phrases) adaptée à CE match précis
-
-{comparison_section}
-
-3. MÉTÉO PRÉVUE:
-   Pour Parc des Princes le {date_formatted}:
-   - Utilise des données météo réalistes pour Paris/France à cette période
-   - En janvier: généralement 5-10°C, souvent nuageux, risque de pluie moyen
-   - En été: 20-30°C, plutôt ensoleillé
-   - Adapte selon la saison réelle
-   
-   - temperature: température en °C (cohérente avec la date)
-   - condition: description ("Ensoleillé", "Nuageux", "Partiellement nuageux", "Pluvieux", etc.)
-   - rain_chance: probabilité de pluie (0-100)
-   - wind_speed: vitesse vent en km/h (10-20 km/h typique)
-   - emoji: emoji météo approprié (☀️, 🌤️, ⛅, 🌧️, ⛈️, etc.)
-
-4. COMPOSITIONS PROBABLES:
-   Génère les compositions RÉALISTES et ACTUELLES (saison 2024-2025):
-   
-   Pour {home_team}:
-   {'- Utilise les vrais joueurs du PSG actuel: Donnarumma (GK), Hakimi, Marquinhos (C), Skriniar, Mendes (DF), Vitinha, Zaïre-Emery, Ugarte (MF), Dembélé, Ramos, Barcola (FW)' if home_team == 'PSG' else f'- Utilise les vrais joueurs actuels de {home_team}'}
-   - Formation: 4-3-3 (typique)
-   
-   Pour {away_team}:
-   {'- Utilise les vrais joueurs de l\'OM actuel: López (GK), Clauss, Gigot, Balerdi, Tavares (DF), Rongier, Veretout, Harit (MF), Aubameyang, Greenwood, Moumbagna (FW)' if 'OM' in away_team or 'Marseille' in away_team else f'- Utilise les vrais joueurs actuels de {away_team}'}
-   - Formation: 4-3-3
-
-IMPORTANT:
-- Adapte TOUS les scores et analyses au match spécifique "{match_name}"
-- Ne copie pas les valeurs d'un autre match
-- Sois cohérent: PSG-OM > PSG-OL > PSG-Monaco > PSG-équipe moyenne
-- Utilise les vrais effectifs 2024-2025
-- Météo réaliste pour {date_formatted}
-
-Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
-{{
+        # Construire les parties du prompt qui contiennent des backslashes
+        psg_lineup_text = '- Utilise les vrais joueurs du PSG actuel: Donnarumma (GK), Hakimi, Marquinhos (C), Skriniar, Mendes (DF), Vitinha, Zaïre-Emery, Ugarte (MF), Dembélé, Ramos, Barcola (FW)'
+        om_lineup_text = "- Utilise les vrais joueurs de l'OM actuel: López (GK), Clauss, Gigot, Balerdi, Tavares (DF), Rongier, Veretout, Harit (MF), Aubameyang, Greenwood, Moumbagna (FW)"
+        
+        home_lineup_instruction = psg_lineup_text if home_team == 'PSG' else f'- Utilise les vrais joueurs actuels de {home_team}'
+        away_lineup_instruction = om_lineup_text if ('OM' in away_team or 'Marseille' in away_team) else f'- Utilise les vrais joueurs actuels de {away_team}'
+        
+        # Construire la partie comparaison (sans backslash dans les expressions)
+        comparison_json_lines = []
+        comparison_name_lines = []
+        if comparison_matches:
+            for m in comparison_matches:
+                comparison_json_lines.append(f'    "{m["key"]}": number,')
+                comparison_name_lines.append(f'    "{m["key"]}_name": "{m["name"]}",')
+        else:
+            comparison_json_lines = ['    "match_1": number,', '    "match_2": number,', '    "match_3": number,']
+        
+        # Construire les chaînes de comparaison
+        comparison_json_str = '\n'.join(comparison_json_lines)
+        comparison_name_str = '\n'.join(comparison_name_lines) if comparison_name_lines else ''
+        
+        # Construire les parties du prompt avec des conditions
+        importance_text = 'Match à très forte affluence' if importance['is_high_profile'] else 'Match d\'importance moyenne'
+        classico_text = 'Le Classique PSG-OM génère toujours une demande exceptionnelle (90-100%).' if importance['is_classico'] else ''
+        ol_text = 'PSG-OL est une affiche majeure de Ligue 1 (80-95%).' if importance['is_ol'] else ''
+        monaco_text = 'PSG-Monaco est un match attractif (75-90%).' if importance['is_monaco'] else ''
+        other_text = 'Pour un match moins médiatisé, ajuste les scores en conséquence (60-85%).' if not importance['is_high_profile'] else ''
+        
+        # Construire le template JSON séparément
+        json_template = """{{
   "analysis": {{
     "hype_score": number,
     "affluence_prevue": number,
     "probabilite_pmr": number,
-    "analyse": "string adaptée à {match_name}"
+    "analyse": "string adaptée à """ + match_name + """"
   }},
   "comparison": {{
     "current_match": number,
-    {chr(10).join([f'    "{m["key"]}": number,' for m in comparison_matches]) if comparison_matches else '    "match_1": number,\n    "match_2": number,\n    "match_3": number,'}
-    {chr(10).join([f'    "{m["key"]}_name": "{m["name"]}",' for m in comparison_matches]) if comparison_matches else ''}
+""" + comparison_json_str + """
+""" + comparison_name_str + """
   }},
   "weather": {{
     "temperature": number,
@@ -966,6 +936,67 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
     }}
   }}
 }}"""
+        
+        # Construire le prompt complet en concaténant les parties
+        prompt = f"""Tu es un expert en football français, météorologie et analyse de données sportives.
+
+MATCH À ANALYSER:
+- Équipes: {match_name}
+- Compétition: Ligue 1
+- Date: {date_formatted}
+- Stade: Parc des Princes
+- Contexte: {importance['rivalry']}
+- Importance: {importance_text}
+
+CONSIGNES D'ANALYSE:
+
+1. ANALYSE D'ANTICIPATION:
+   Analyse le niveau d'attente pour ce match spécifique "{match_name}".
+   {classico_text}
+   {ol_text}
+   {monaco_text}
+   {other_text}
+   
+   - hype_score: niveau d'anticipation supporters (0-100)
+   - affluence_prevue: taux de remplissage estimé (0-100, base Parc des Princes = 90%+ pour gros matchs)
+   - probabilite_pmr: chance qu'une place PMR se libère (0-100, faible pour gros matchs)
+   - analyse: explication courte (2-3 phrases) adaptée à CE match précis
+
+{comparison_section}
+
+3. MÉTÉO PRÉVUE:
+   Pour Parc des Princes le {date_formatted}:
+   - Utilise des données météo réalistes pour Paris/France à cette période
+   - En janvier: généralement 5-10°C, souvent nuageux, risque de pluie moyen
+   - En été: 20-30°C, plutôt ensoleillé
+   - Adapte selon la saison réelle
+   
+   - temperature: température en °C (cohérente avec la date)
+   - condition: description ("Ensoleillé", "Nuageux", "Partiellement nuageux", "Pluvieux", etc.)
+   - rain_chance: probabilité de pluie (0-100)
+   - wind_speed: vitesse vent en km/h (10-20 km/h typique)
+   - emoji: emoji météo approprié (☀️, 🌤️, ⛅, 🌧️, ⛈️, etc.)
+
+4. COMPOSITIONS PROBABLES:
+   Génère les compositions RÉALISTES et ACTUELLES (saison 2024-2025):
+   
+   Pour {home_team}:
+   {home_lineup_instruction}
+   - Formation: 4-3-3 (typique)
+   
+   Pour {away_team}:
+   {away_lineup_instruction}
+   - Formation: 4-3-3
+
+IMPORTANT:
+- Adapte TOUS les scores et analyses au match spécifique "{match_name}"
+- Ne copie pas les valeurs d'un autre match
+- Sois cohérent: PSG-OM > PSG-OL > PSG-Monaco > PSG-équipe moyenne
+- Utilise les vrais effectifs 2024-2025
+- Météo réaliste pour {date_formatted}
+
+Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
+""" + json_template
 
         # Clé API Groq (doit être définie dans les variables d'environnement)
         GROQ_API_KEY = os.getenv("GROQ_API_KEY")
