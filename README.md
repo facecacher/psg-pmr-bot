@@ -37,14 +37,89 @@ docker run -e TELEGRAM_TOKEN="votre_token" -e TELEGRAM_CHAT_ID="votre_chat_id" p
 
 ## Déploiement sur Dokploy
 
-1. Pousser le code sur GitHub
-2. Dans Dokploy, créer une nouvelle application
-3. Connecter le dépôt GitHub
-4. Configurer les variables d'environnement dans **"Environment Settings"** (pas Build-time) :
-   - `TELEGRAM_TOKEN`
-   - `TELEGRAM_CHAT_ID`
-5. Configurer le port si nécessaire (le bot génère `status.json` mais ne sert pas de site web par défaut)
-6. Déployer
+### ✅ Code déjà sur GitHub
+Le code est disponible sur : `https://github.com/facecacher/psg-pmr-bot`
+
+### 📋 Guide étape par étape pour Dokploy
+
+#### 1. Créer une nouvelle application
+- Connectez-vous à votre instance Dokploy
+- Cliquez sur **"New Application"** ou **"Nouvelle application"**
+- Choisissez **"GitHub"** comme source
+
+#### 2. Connecter le dépôt GitHub
+- Si c'est la première fois, connectez votre compte GitHub
+- Autorisez Dokploy à accéder à vos dépôts
+- Sélectionnez le dépôt : **`facecacher/psg-pmr-bot`**
+- Choisissez la branche : **`main`**
+
+#### 3. Configuration de l'application
+- **Build Type** : Sélectionnez **"Docker"** ou **"Dockerfile"**
+  - Dokploy devrait détecter automatiquement le Dockerfile
+- **Port** : Laissez vide (le bot ne sert pas de site web, il génère juste `status.json`)
+
+#### 4. ⚠️ IMPORTANT : Configurer les variables d'environnement
+Dans la section **"Environment Settings"** (PAS "Build-time Arguments" ni "Build-time Secrets"), ajoutez :
+
+**Variable 1 :**
+- **Nom** : `TELEGRAM_TOKEN`
+- **Valeur** : `8222793392:AAFBtlCNAlPyUYgf1aup06HAvRO9V14DmRo`
+- Cliquez sur **"Add"**
+
+**Variable 2 :**
+- **Nom** : `TELEGRAM_CHAT_ID`
+- **Valeur** : `-1003428870741`
+- Cliquez sur **"Add"`
+
+⚠️ **CRITIQUE** : Ces variables DOIVENT être dans **"Environment Settings"** (runtime), pas dans "Build-time Arguments" !
+
+#### 5. Déployer
+- Cliquez sur **"Deploy"** ou **"Déployer"**
+- Le build peut prendre 5-10 minutes la première fois
+- Vous verrez les logs de construction dans l'onglet **"Build Logs"**
+
+#### 6. Vérifier que ça fonctionne
+- Allez dans l'onglet **"Logs"** ou **"Runtime Logs"**
+- Vous devriez voir :
+  ```
+  🚀 Bot PSM démarré!
+  PSG vs PARIS FC → PMR trouvées : 0
+  ⏳ Pause 92 secondes...
+  ```
+- Le bot vérifie les matchs toutes les ~90 secondes
+
+### 📱 Messages Telegram configurés
+
+Le bot envoie automatiquement des messages Telegram avec le format suivant :
+
+**Quand des places PMR sont disponibles :**
+```
+🔥 ALERTE PLACE PMR DISPONIBLE ! 🔥
+
+🎟️ Match : {nom}
+✅ Places PMR trouvées !
+
+👉 Fonce sur la billetterie maintenant !
+```
+
+**Quand aucune place n'est disponible (toutes les 8h) :**
+```
+😴 Pas encore de places PMR...
+
+🎟️ Match : {nom}
+❌ Aucune place PMR disponible pour le moment
+
+💪 On continue de surveiller pour toi !
+```
+
+### 🔧 Fonctionnalités incluses
+
+- ✅ Mode headless activé (fonctionne sans écran sur Docker)
+- ✅ Arguments Chrome optimisés pour éviter la détection
+- ✅ Scroll progressif pour un comportement plus naturel
+- ✅ Génération de `status.json` pour l'interface web
+- ✅ Variables d'environnement pour la sécurité
+- ✅ Cooldown de 8h pour éviter le spam Telegram
 
 ## Interface web
 
