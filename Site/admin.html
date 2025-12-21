@@ -534,35 +534,8 @@
             <div style="margin-top: 40px; margin-bottom: 40px;">
                 <div class="section-title">Visiteurs des 7 derniers jours</div>
                 <div class="card">
-                    <div style="height: 200px; display: flex; align-items: flex-end; gap: 12px; padding: 20px;">
-                        <div style="flex: 1; background: linear-gradient(180deg, #0066ff 0%, #0044cc 100%); border-radius: 8px; height: 60%; position: relative;">
-                            <span style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600;">142</span>
-                            <span style="position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.5);">Lun</span>
-                        </div>
-                        <div style="flex: 1; background: linear-gradient(180deg, #0066ff 0%, #0044cc 100%); border-radius: 8px; height: 75%;">
-                            <span style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600;">187</span>
-                            <span style="position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.5);">Mar</span>
-                        </div>
-                        <div style="flex: 1; background: linear-gradient(180deg, #0066ff 0%, #0044cc 100%); border-radius: 8px; height: 55%;">
-                            <span style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600;">128</span>
-                            <span style="position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.5);">Mer</span>
-                        </div>
-                        <div style="flex: 1; background: linear-gradient(180deg, #0066ff 0%, #0044cc 100%); border-radius: 8px; height: 90%;">
-                            <span style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600;">214</span>
-                            <span style="position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.5);">Jeu</span>
-                        </div>
-                        <div style="flex: 1; background: linear-gradient(180deg, #0066ff 0%, #0044cc 100%); border-radius: 8px; height: 70%;">
-                            <span style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600;">176</span>
-                            <span style="position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.5);">Ven</span>
-                        </div>
-                        <div style="flex: 1; background: linear-gradient(180deg, #0066ff 0%, #0044cc 100%); border-radius: 8px; height: 100%;">
-                            <span style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600;">243</span>
-                            <span style="position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.5);">Sam</span>
-                        </div>
-                        <div style="flex: 1; background: linear-gradient(180deg, #00ff88 0%, #00cc66 100%); border-radius: 8px; height: 80%; box-shadow: 0 0 20px rgba(0,255,136,0.3);">
-                            <span style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600; color: #00ff88;">186</span>
-                            <span style="position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #00ff88;">Aujourd'hui</span>
-                        </div>
+                    <div id="chart-container" style="height: 200px; display: flex; align-items: flex-end; gap: 12px; padding: 20px;">
+                        <!-- Le graphique sera généré dynamiquement par JavaScript -->
                     </div>
                 </div>
             </div>
@@ -669,6 +642,9 @@
                 document.getElementById('stat-peak').textContent = analyticsData.pic_connexions;
                 document.getElementById('stat-return-rate').textContent = analyticsData.taux_retour;
                 
+                // Mettre à jour le graphique des 7 derniers jours
+                updateChart(analyticsData.historique_7j || [0, 0, 0, 0, 0, 0, 0]);
+                
                 addLog('success', 'Données rechargées');
             } catch (error) {
                 addLog('error', 'Erreur de chargement: ' + error.message);
@@ -727,6 +703,41 @@
             while (container.children.length > 5) {
                 container.removeChild(container.lastChild);
             }
+        }
+
+        function updateChart(historique) {
+            const container = document.getElementById('chart-container');
+            container.innerHTML = '';
+            
+            // Noms des jours (7 derniers jours)
+            const jours = ['Il y a 6j', 'Il y a 5j', 'Il y a 4j', 'Il y a 3j', 'Il y a 2j', 'Hier', 'Aujourd\'hui'];
+            
+            // Trouver la valeur maximale pour calculer les hauteurs relatives
+            const maxValue = Math.max(...historique, 1); // Au moins 1 pour éviter division par 0
+            
+            historique.forEach((value, index) => {
+                const isToday = index === historique.length - 1;
+                const height = maxValue > 0 ? Math.max((value / maxValue) * 100, 5) : 5; // Minimum 5% pour visibilité
+                
+                const bar = document.createElement('div');
+                bar.style.cssText = `
+                    flex: 1;
+                    background: ${isToday 
+                        ? 'linear-gradient(180deg, #00ff88 0%, #00cc66 100%)' 
+                        : 'linear-gradient(180deg, #0066ff 0%, #0044cc 100%)'};
+                    border-radius: 8px;
+                    height: ${height}%;
+                    position: relative;
+                    ${isToday ? 'box-shadow: 0 0 20px rgba(0,255,136,0.3);' : ''}
+                `;
+                
+                bar.innerHTML = `
+                    <span style="position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600; ${isToday ? 'color: #00ff88;' : 'color: #fff;'}">${value}</span>
+                    <span style="position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); font-size: 11px; ${isToday ? 'color: #00ff88;' : 'color: rgba(255,255,255,0.5);'}">${jours[index] || `J${index + 1}`}</span>
+                `;
+                
+                container.appendChild(bar);
+            });
         }
 
         // MODAL

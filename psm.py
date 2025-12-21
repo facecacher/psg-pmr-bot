@@ -360,13 +360,43 @@ def api_get_analytics():
             "clics_telegram": 0,
             "pic_connexions": 0,
             "taux_retour": "0%",
-            "historique_7j": [0, 0, 0, 0, 0, 0, 0]
+            "historique_7j": [0, 0, 0, 0, 0, 0, 0],
+            "derniere_date": None
         }
         
         # Remplir les valeurs manquantes
         for key, default_value in default_values.items():
             if key not in analytics:
                 analytics[key] = default_value
+        
+        # Vérifier si l'historique doit être mis à jour (nouveau jour)
+        date_actuelle = datetime.now().strftime("%Y-%m-%d")
+        derniere_date = analytics.get("derniere_date")
+        
+        if derniere_date != date_actuelle and derniere_date is not None:
+            # Nouveau jour détecté, mettre à jour l'historique
+            try:
+                derniere_date_obj = datetime.strptime(derniere_date, "%Y-%m-%d")
+                date_actuelle_obj = datetime.strptime(date_actuelle, "%Y-%m-%d")
+                jours_ecoules = (date_actuelle_obj - derniere_date_obj).days
+                
+                if jours_ecoules > 0:
+                    # Décaler l'historique
+                    for i in range(min(jours_ecoules, 7)):
+                        analytics["historique_7j"].pop(0)
+                        analytics["historique_7j"].append(0)
+                    
+                    if jours_ecoules >= 7:
+                        analytics["historique_7j"] = [0, 0, 0, 0, 0, 0, 0]
+                    
+                    analytics["visiteurs_aujourdhui"] = 0
+                    analytics["derniere_date"] = date_actuelle
+                    
+                    # Sauvegarder la mise à jour
+                    with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(analytics, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"⚠️ Erreur mise à jour historique: {e}")
         
         return jsonify(analytics)
     except FileNotFoundError:
@@ -380,7 +410,8 @@ def api_get_analytics():
             "clics_telegram": 0,
             "pic_connexions": 0,
             "taux_retour": "0%",
-            "historique_7j": [0, 0, 0, 0, 0, 0, 0]
+            "historique_7j": [0, 0, 0, 0, 0, 0, 0],
+            "derniere_date": datetime.now().strftime("%Y-%m-%d")
         }
         with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
             json.dump(default_analytics, f, ensure_ascii=False, indent=2)
@@ -410,7 +441,8 @@ def api_track_visitor():
                 "clics_telegram": 0,
                 "pic_connexions": 0,
                 "taux_retour": "0%",
-                "historique_7j": [0, 0, 0, 0, 0, 0, 0]
+                "historique_7j": [0, 0, 0, 0, 0, 0, 0],
+                "derniere_date": None
             }
         
         # S'assurer que toutes les propriétés existent
@@ -432,11 +464,51 @@ def api_track_visitor():
             analytics["taux_retour"] = "0%"
         if "historique_7j" not in analytics:
             analytics["historique_7j"] = [0, 0, 0, 0, 0, 0, 0]
+        if "derniere_date" not in analytics:
+            analytics["derniere_date"] = None
         
-        # Incrémenter
+        # Obtenir la date actuelle (format YYYY-MM-DD)
+        date_actuelle = datetime.now().strftime("%Y-%m-%d")
+        derniere_date = analytics.get("derniere_date")
+        
+        # Si c'est un nouveau jour, mettre à jour l'historique
+        if derniere_date != date_actuelle:
+            if derniere_date is not None:
+                # Calculer le nombre de jours écoulés
+                try:
+                    derniere_date_obj = datetime.strptime(derniere_date, "%Y-%m-%d")
+                    date_actuelle_obj = datetime.strptime(date_actuelle, "%Y-%m-%d")
+                    jours_ecoules = (date_actuelle_obj - derniere_date_obj).days
+                    
+                    # Si plus d'un jour s'est écoulé, décaler l'historique
+                    if jours_ecoules > 0:
+                        # Décaler l'historique vers la gauche
+                        for i in range(min(jours_ecoules, 7)):
+                            analytics["historique_7j"].pop(0)
+                            analytics["historique_7j"].append(0)
+                        
+                        # Si plus de 7 jours, réinitialiser
+                        if jours_ecoules >= 7:
+                            analytics["historique_7j"] = [0, 0, 0, 0, 0, 0, 0]
+                except Exception as e:
+                    print(f"⚠️ Erreur calcul jours: {e}")
+                    # En cas d'erreur, réinitialiser l'historique
+                    analytics["historique_7j"] = [0, 0, 0, 0, 0, 0, 0]
+            
+            # Réinitialiser le compteur du jour actuel
+            analytics["visiteurs_aujourdhui"] = 0
+            analytics["derniere_date"] = date_actuelle
+        
+        # Incrémenter les compteurs
         analytics["visiteurs_totaux"] = analytics.get("visiteurs_totaux", 0) + 1
         analytics["visiteurs_en_ligne"] = analytics.get("visiteurs_en_ligne", 0) + 1
         analytics["visiteurs_aujourdhui"] = analytics.get("visiteurs_aujourdhui", 0) + 1
+        
+        # Mettre à jour l'historique des 7 derniers jours (dernier élément = aujourd'hui)
+        if len(analytics["historique_7j"]) > 0:
+            analytics["historique_7j"][-1] = analytics["visiteurs_aujourdhui"]
+        else:
+            analytics["historique_7j"] = [analytics["visiteurs_aujourdhui"]]
         
         # Mettre à jour le pic de connexions si nécessaire
         if analytics["visiteurs_en_ligne"] > analytics.get("pic_connexions", 0):
