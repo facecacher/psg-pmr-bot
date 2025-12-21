@@ -564,7 +564,8 @@
                 }
                 
             } catch (error) {
-                console.log('En attente des données du bot...');
+                console.error('Erreur lors du chargement des données:', error);
+                console.log('URL tentée:', `${BOT_URL}/status.json`);
             }
         }
 

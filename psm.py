@@ -177,12 +177,30 @@ def start_web_server():
             super().end_headers()
         
         def do_GET(self):
-            # Si on demande status.json, le servir depuis la racine
-            if self.path == '/status.json':
-                self.path = '/../status.json'
-                return super().do_GET()
+            # Si on demande status.json, le servir depuis la racine du projet
+            if self.path == '/status.json' or self.path == '/status.json/':
+                import os
+                # status.json est dans /app (WORKDIR)
+                status_path = '/app/status.json'
+                if os.path.exists(status_path):
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    with open(status_path, 'rb') as f:
+                        self.wfile.write(f.read())
+                    return
+                else:
+                    self.send_response(404)
+                    self.send_header('Content-type', 'text/plain')
+                    self.end_headers()
+                    self.wfile.write(b'status.json not found')
+                    return
             # Sinon, servir depuis le dossier Site
             return super().do_GET()
+        
+        def log_message(self, format, *args):
+            # Réduire les logs verbeux
+            pass
     
     server = HTTPServer(('0.0.0.0', port), CustomHandler)
     print(f"🌐 Serveur web démarré sur le port {port}")
