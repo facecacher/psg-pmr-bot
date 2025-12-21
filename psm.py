@@ -107,9 +107,21 @@ def verifier_match(match):
             )
             
             page = context.new_page()
+            
+            # Configuration des timeouts plus longs
+            page.set_default_timeout(120000)  # 120 secondes pour toutes les opérations
+            page.set_default_navigation_timeout(120000)
 
-            page.goto(url, timeout=60000)
-            page.wait_for_load_state("networkidle")
+            print(f"🌐 Chargement de {nom}...")
+            page.goto(url, timeout=120000, wait_until="domcontentloaded")
+            print(f"✅ Page chargée pour {nom}")
+            
+            # Attendre que la page soit prête avec un timeout plus long
+            try:
+                page.wait_for_load_state("networkidle", timeout=60000)
+            except:
+                print(f"⚠️ Timeout networkidle pour {nom}, on continue quand même...")
+            
             page.wait_for_timeout(4000)
 
             # Scroll progressif
