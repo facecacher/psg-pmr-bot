@@ -349,23 +349,47 @@ def api_get_analytics():
     try:
         with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
             analytics = json.load(f)
+        
+        # S'assurer que toutes les propriétés existent
+        default_values = {
+            "visiteurs_totaux": 0,
+            "visiteurs_en_ligne": 0,
+            "visiteurs_aujourdhui": 0,
+            "temps_moyen": "0m 0s",
+            "taux_rebond": "0%",
+            "clics_telegram": 0,
+            "pic_connexions": 0,
+            "taux_retour": "0%",
+            "historique_7j": [0, 0, 0, 0, 0, 0, 0]
+        }
+        
+        # Remplir les valeurs manquantes
+        for key, default_value in default_values.items():
+            if key not in analytics:
+                analytics[key] = default_value
+        
         return jsonify(analytics)
     except FileNotFoundError:
-        # Créer des stats par défaut
+        # Créer des stats par défaut (valeurs réelles, pas de simulation)
         default_analytics = {
-            "visiteurs_totaux": 2847,
-            "visiteurs_en_ligne": 12,
-            "visiteurs_aujourdhui": 186,
-            "temps_moyen": "2m 34s",
-            "taux_rebond": "42%",
-            "clics_telegram": 127,
-            "pic_connexions": 34,
-            "taux_retour": "68%",
-            "historique_7j": [142, 187, 128, 214, 176, 243, 186]
+            "visiteurs_totaux": 0,
+            "visiteurs_en_ligne": 0,
+            "visiteurs_aujourdhui": 0,
+            "temps_moyen": "0m 0s",
+            "taux_rebond": "0%",
+            "clics_telegram": 0,
+            "pic_connexions": 0,
+            "taux_retour": "0%",
+            "historique_7j": [0, 0, 0, 0, 0, 0, 0]
         }
         with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
             json.dump(default_analytics, f, ensure_ascii=False, indent=2)
         return jsonify(default_analytics)
+    except Exception as e:
+        print(f"❌ Erreur lecture analytics: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analytics/visitor', methods=['POST'])
 def api_track_visitor():
@@ -376,16 +400,47 @@ def api_track_visitor():
             with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
                 analytics = json.load(f)
         except FileNotFoundError:
+            # Initialiser avec toutes les propriétés nécessaires
             analytics = {
                 "visiteurs_totaux": 0,
                 "visiteurs_en_ligne": 0,
-                "visiteurs_aujourdhui": 0
+                "visiteurs_aujourdhui": 0,
+                "temps_moyen": "0m 0s",
+                "taux_rebond": "0%",
+                "clics_telegram": 0,
+                "pic_connexions": 0,
+                "taux_retour": "0%",
+                "historique_7j": [0, 0, 0, 0, 0, 0, 0]
             }
         
+        # S'assurer que toutes les propriétés existent
+        if "visiteurs_totaux" not in analytics:
+            analytics["visiteurs_totaux"] = 0
+        if "visiteurs_en_ligne" not in analytics:
+            analytics["visiteurs_en_ligne"] = 0
+        if "visiteurs_aujourdhui" not in analytics:
+            analytics["visiteurs_aujourdhui"] = 0
+        if "temps_moyen" not in analytics:
+            analytics["temps_moyen"] = "0m 0s"
+        if "taux_rebond" not in analytics:
+            analytics["taux_rebond"] = "0%"
+        if "clics_telegram" not in analytics:
+            analytics["clics_telegram"] = 0
+        if "pic_connexions" not in analytics:
+            analytics["pic_connexions"] = 0
+        if "taux_retour" not in analytics:
+            analytics["taux_retour"] = "0%"
+        if "historique_7j" not in analytics:
+            analytics["historique_7j"] = [0, 0, 0, 0, 0, 0, 0]
+        
         # Incrémenter
-        analytics["visiteurs_totaux"] += 1
+        analytics["visiteurs_totaux"] = analytics.get("visiteurs_totaux", 0) + 1
         analytics["visiteurs_en_ligne"] = analytics.get("visiteurs_en_ligne", 0) + 1
         analytics["visiteurs_aujourdhui"] = analytics.get("visiteurs_aujourdhui", 0) + 1
+        
+        # Mettre à jour le pic de connexions si nécessaire
+        if analytics["visiteurs_en_ligne"] > analytics.get("pic_connexions", 0):
+            analytics["pic_connexions"] = analytics["visiteurs_en_ligne"]
         
         # Sauvegarder
         with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
@@ -393,6 +448,9 @@ def api_track_visitor():
         
         return jsonify({"success": True})
     except Exception as e:
+        print(f"❌ Erreur tracking visiteur: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analytics/telegram-click', methods=['POST'])
@@ -404,9 +462,22 @@ def api_track_telegram_click():
             with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
                 analytics = json.load(f)
         except FileNotFoundError:
+            # Initialiser avec toutes les propriétés nécessaires
             analytics = {
-                "clics_telegram": 0
+                "visiteurs_totaux": 0,
+                "visiteurs_en_ligne": 0,
+                "visiteurs_aujourdhui": 0,
+                "temps_moyen": "0m 0s",
+                "taux_rebond": "0%",
+                "clics_telegram": 0,
+                "pic_connexions": 0,
+                "taux_retour": "0%",
+                "historique_7j": [0, 0, 0, 0, 0, 0, 0]
             }
+        
+        # S'assurer que toutes les propriétés existent
+        if "clics_telegram" not in analytics:
+            analytics["clics_telegram"] = 0
         
         # Incrémenter
         analytics["clics_telegram"] = analytics.get("clics_telegram", 0) + 1
@@ -417,6 +488,9 @@ def api_track_telegram_click():
         
         return jsonify({"success": True})
     except Exception as e:
+        print(f"❌ Erreur tracking clic Telegram: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 def start_flask_api():

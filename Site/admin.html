@@ -801,19 +801,6 @@
         setInterval(() => {
             if (document.getElementById('adminDashboard').style.display === 'block') {
                 loadData();
-                
-                // Simuler les visiteurs en ligne qui changent
-                const onlineEl = document.getElementById('stat-visitors-online');
-                const currentOnline = parseInt(onlineEl.textContent);
-                const change = Math.random() > 0.5 ? 1 : -1;
-                const newOnline = Math.max(5, Math.min(25, currentOnline + change));
-                onlineEl.textContent = newOnline;
-                
-                // Animation flash
-                onlineEl.style.color = '#00ff88';
-                setTimeout(() => {
-                    onlineEl.style.color = '';
-                }, 300);
             }
         }, 5000); // Refresh toutes les 5 secondes
 
