@@ -184,18 +184,24 @@ def verifier_match(match):
                 page.goto(url, timeout=120000, wait_until="domcontentloaded")
                 print(f"✅ Page chargée pour {nom} (2ème tentative)")
             
-            # Attendre que la page soit prête avec un timeout plus long
-            try:
-                page.wait_for_load_state("networkidle", timeout=60000)
-            except:
-                print(f"⚠️ Timeout networkidle pour {nom}, on continue quand même...")
+            # Attendre BEAUCOUP plus longtemps que le contenu se charge
+            print(f"⏳ Attente du chargement complet...")
+            page.wait_for_timeout(10000)  # 10 secondes au lieu de 4
             
-            page.wait_for_timeout(4000)
-
-            # Scroll progressif
-            for i in range(3):
-                page.mouse.wheel(0, 1000)
-                page.wait_for_timeout(1000)
+            # Scroll AVANT de chercher les éléments
+            print(f"📜 Scroll de la page...")
+            for i in range(5):  # Plus de scrolls
+                page.mouse.wheel(0, 1500)
+                page.wait_for_timeout(2000)  # Plus de temps entre chaque scroll
+            
+            # Attendre encore après le scroll
+            page.wait_for_timeout(5000)
+            
+            # Essayer de cliquer sur un bouton si présent (pour déclencher le chargement)
+            try:
+                page.wait_for_selector('button, .button, [role="button"]', timeout=5000)
+            except:
+                pass
 
             heure = datetime.now().strftime("%H:%M:%S")
 
