@@ -21,6 +21,18 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
 
+# Vérification des variables d'environnement
+if not TELEGRAM_TOKEN:
+    print("❌ ERREUR: TELEGRAM_TOKEN n'est pas défini!")
+    exit(1)
+if not CHAT_ID:
+    print("❌ ERREUR: TELEGRAM_CHAT_ID n'est pas défini!")
+    exit(1)
+
+print("🚀 Bot PSM démarré!")
+print(f"📋 Mode headless: {HEADLESS}")
+print(f"📊 Nombre de matchs à surveiller: {len(MATCHS)}")
+
 # Cooldown par match
 dernier_message_indispo = {}
 
@@ -72,6 +84,7 @@ def verifier_match(match):
         print(f"⚠️ Erreur sur {nom} :", e)
 
 # ✅ BOUCLE PRINCIPALE MULTI-MATCHS
+print("🔄 Démarrage de la surveillance...")
 while True:
     for match in MATCHS:
         verifier_match(match)
