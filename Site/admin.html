@@ -356,26 +356,51 @@
         }
 
         .log-item {
-            padding: 16px;
+            padding: 12px 16px;
             background: rgba(255,255,255,0.02);
             border-left: 3px solid #0066ff;
-            border-radius: 10px;
-            margin-bottom: 12px;
-            font-size: 14px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            word-wrap: break-word;
+        }
+
+        .log-message {
+            color: rgba(255,255,255,0.9);
+            line-height: 1.5;
         }
 
         .log-time {
-            color: rgba(255,255,255,0.5);
-            font-size: 12px;
-            margin-bottom: 6px;
+            color: rgba(255,255,255,0.4);
+            font-size: 11px;
+            margin-bottom: 4px;
+            font-weight: 600;
         }
 
         .log-success {
             border-left-color: #00ff88;
+            background: rgba(0,255,136,0.05);
         }
 
         .log-error {
             border-left-color: #ff4d4d;
+            background: rgba(255,77,77,0.05);
+        }
+
+        .log-warning {
+            border-left-color: #ffaa00;
+            background: rgba(255,170,0,0.05);
+        }
+
+        .log-info {
+            border-left-color: #0066ff;
+        }
+
+        #logs-container {
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 8px;
         }
 
         .modal {
@@ -591,7 +616,9 @@
                 document.getElementById('authPage').style.display = 'none';
                 document.getElementById('adminDashboard').style.display = 'block';
                 loadData();
-                addLog('success', 'Connexion réussie');
+                loadBackendLogs();
+                // Charger les logs toutes les 3 secondes
+                setInterval(loadBackendLogs, 3000);
             } else {
                 document.getElementById('errorMsg').style.display = 'block';
                 setTimeout(() => {
@@ -609,6 +636,56 @@
 
         // URL de l'API (Dokploy)
         const API_URL = 'https://app.lesbricolesdelekmane.fun/api';
+
+        // Charger les vrais logs du backend
+        async function loadBackendLogs() {
+            try {
+                const response = await fetch(`${API_URL}/logs?limit=50`);
+                const data = await response.json();
+                
+                if (data.success && data.logs) {
+                    const container = document.getElementById('logs-container');
+                    container.innerHTML = ''; // Vider le conteneur
+                    
+                    // Afficher les logs (du plus récent au plus ancien)
+                    data.logs.reverse().forEach(log => {
+                        const logElement = document.createElement('div');
+                        logElement.className = `log-item log-${log.type}`;
+                        
+                        // Formater le message avec les emojis et couleurs
+                        let formattedMessage = log.message;
+                        
+                        // Remplacer les emojis par des versions stylisées
+                        formattedMessage = formattedMessage
+                            .replace(/✅/g, '<span style="color: #00ff88;">✅</span>')
+                            .replace(/❌/g, '<span style="color: #ff4d4d;">❌</span>')
+                            .replace(/🔄/g, '<span style="color: #0066ff;">🔄</span>')
+                            .replace(/⏳/g, '<span style="color: #ffaa00;">⏳</span>')
+                            .replace(/⚠️/g, '<span style="color: #ffaa00;">⚠️</span>')
+                            .replace(/📋/g, '<span style="color: #0066ff;">📋</span>')
+                            .replace(/💾/g, '<span style="color: #00ff88;">💾</span>')
+                            .replace(/🗑️/g, '<span style="color: #ff4d4d;">🗑️</span>')
+                            .replace(/🌐/g, '<span style="color: #0066ff;">🌐</span>')
+                            .replace(/📊/g, '<span style="color: #00ff88;">📊</span>')
+                            .replace(/📂/g, '<span style="color: #0066ff;">📂</span>')
+                            .replace(/📝/g, '<span style="color: #0066ff;">📝</span>')
+                            .replace(/⏸️/g, '<span style="color: #ffaa00;">⏸️</span>');
+                        
+                        logElement.innerHTML = `
+                            <div class="log-time">${log.timestamp}</div>
+                            <div class="log-message">${formattedMessage}</div>
+                        `;
+                        
+                        container.appendChild(logElement);
+                    });
+                    
+                    // Auto-scroll vers le bas pour voir les derniers logs
+                    container.scrollTop = container.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Erreur chargement logs:', error);
+            }
+        }
 
         // Charger les données du bot
         async function loadData() {
@@ -884,11 +961,12 @@
             }
         }, 5000); // Refresh toutes les 5 secondes
 
-        // Initialiser logs
-        setTimeout(() => {
-            addLog('success', 'Connexion admin établie');
-            addLog('info', 'Chargement des statistiques...');
-        }, 500);
+        // Charger les logs backend toutes les 3 secondes si le dashboard est visible
+        setInterval(() => {
+            if (document.getElementById('adminDashboard').style.display === 'block') {
+                loadBackendLogs();
+            }
+        }, 3000);
 
         // Animation d'entrée
         document.querySelectorAll('.card, .match-item').forEach((el, i) => {

@@ -710,3 +710,4 @@ Si tous les éléments de la checklist sont cochés, votre bot est opérationnel
 
 **Bonne chance avec votre bot PSG PMR ! 🚀**
 
+

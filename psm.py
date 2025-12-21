@@ -10,6 +10,26 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 import locale
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import collections
+
+# ====================
+# SYSTÈME DE LOGS POUR L'ADMIN
+# ====================
+backend_logs = collections.deque(maxlen=200)
+
+def log(message, log_type='info'):
+    """Log un message dans la console ET dans backend_logs"""
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    
+    # Afficher dans la console
+    print(message)
+    
+    # Stocker dans la liste
+    backend_logs.append({
+        'timestamp': timestamp,
+        'type': log_type,
+        'message': message
+    })
 
 # Configuration Playwright pour Docker
 os.environ['PLAYWRIGHT_BROWSERS_PATH'] = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '/root/.cache/ms-playwright')
@@ -27,7 +47,9 @@ except:
 def charger_matchs():
     try:
         with open('matches.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
+            matches = json.load(f)
+        log(f"📂 matches.json chargé: {len(matches)} match(s)", 'info')
+        return matches
     except FileNotFoundError:
         # Matchs par défaut si le fichier n'existe pas
         matchs_default = [
@@ -42,6 +64,7 @@ def charger_matchs():
         ]
         with open('matches.json', 'w', encoding='utf-8') as f:
             json.dump(matchs_default, f, ensure_ascii=False, indent=2)
+        log(f"📂 matches.json créé avec {len(matchs_default)} match(s) par défaut", 'info')
         return matchs_default
 
 # ✅ LISTE DES MATCHS À SURVEILLER (chargée dynamiquement)
@@ -188,22 +211,22 @@ def verifier_match(match):
             page.set_default_timeout(120000)  # 120 secondes pour toutes les opérations
             page.set_default_navigation_timeout(120000)
 
-            print(f"🌐 Chargement de {nom}...")
+            log(f"🌐 Chargement de {nom}...", 'info')
             try:
                 page.goto(url, timeout=120000, wait_until="domcontentloaded")
-                print(f"✅ Page chargée pour {nom}")
+                log(f"✅ Page chargée pour {nom}", 'success')
             except Exception as goto_error:
-                print(f"⚠️ Erreur lors du chargement de la page pour {nom}: {goto_error}")
-                print(f"🔄 Nouvelle tentative...")
+                log(f"⚠️ Erreur lors du chargement de la page pour {nom}: {goto_error}", 'warning')
+                log(f"🔄 Nouvelle tentative...", 'info')
                 page.goto(url, timeout=120000, wait_until="domcontentloaded")
-                print(f"✅ Page chargée pour {nom} (2ème tentative)")
+                log(f"✅ Page chargée pour {nom} (2ème tentative)", 'success')
             
             # Attendre BEAUCOUP plus longtemps que le contenu se charge
-            print(f"⏳ Attente du chargement complet...")
+            log(f"⏳ Attente du chargement complet...", 'info')
             page.wait_for_timeout(10000)  # 10 secondes au lieu de 4
             
             # Scroll AVANT de chercher les éléments
-            print(f"📜 Scroll de la page...")
+            log(f"📜 Scroll de la page...", 'info')
             for i in range(5):  # Plus de scrolls
                 page.mouse.wheel(0, 1500)
                 page.wait_for_timeout(2000)  # Plus de temps entre chaque scroll
@@ -220,7 +243,7 @@ def verifier_match(match):
             heure = datetime.now().strftime("%H:%M:%S")
 
             pmr_elements = page.query_selector_all('div[data-offer-type="PMR"]')
-            print(f"{nom} → PMR trouvées :", len(pmr_elements))
+            log(f"{nom} → PMR trouvées : {len(pmr_elements)}", 'info')
 
             # Mettre à jour les statistiques
             nb_checks_par_match[nom] = nb_checks_par_match.get(nom, 0) + 1
@@ -234,7 +257,7 @@ def verifier_match(match):
                     envoyer_message(f"😴 Pas encore de places PMR...\n\n🎟️ Match : {nom}\n❌ Aucune place PMR disponible pour le moment\n\n💪 On continue de surveiller pour toi !")
                     dernier_message_indispo[nom] = datetime.now()
                 else:
-                    print(f"{nom} → Pas de PMR (cooldown actif)")
+                    log(f"{nom} → Pas de PMR (cooldown actif)", 'info')
 
             # Sauvegarder le status avant de fermer
             sauvegarder_status()
@@ -243,9 +266,9 @@ def verifier_match(match):
             browser.close()
 
     except Exception as e:
-        print(f"⚠️ Erreur sur {nom} :", e)
+        log(f"⚠️ Erreur sur {nom} : {e}", 'error')
         import traceback
-        print(f"📋 Détails de l'erreur :")
+        log(f"📋 Détails de l'erreur :", 'error')
         traceback.print_exc()
         # Sauvegarder le status même en cas d'erreur
         sauvegarder_status()
@@ -332,7 +355,16 @@ def api_add_match():
         with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
             json.dump(matches, f, ensure_ascii=False, indent=2)
         
-        print(f"✅ Match ajouté: {nom} ({url})")
+        # Mettre à jour status.json immédiatement
+        global MATCHS
+        MATCHS = matches  # Mettre à jour la variable globale
+        sauvegarder_status()  # Mettre à jour status.json pour que le site l'affiche
+        
+        log(f"✅ Match ajouté: {nom} ({url})", 'success')
+        log(f"📊 Total de matchs surveillés: {len(matches)}", 'info')
+        log(f"🔄 Le match sera vérifié au prochain cycle de surveillance (~90 secondes)", 'info')
+        log(f"💾 matches.json mis à jour avec succès", 'success')
+        log(f"💾 status.json mis à jour - le nouveau match apparaît sur le site public", 'success')
         
         return jsonify({"success": True, "match": new_match}), 201
     except Exception as e:
@@ -351,8 +383,20 @@ def api_delete_match(index):
         if 0 <= index < len(matches):
             deleted = matches.pop(index)
             
+            # Sauvegarder
             with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
                 json.dump(matches, f, ensure_ascii=False, indent=2)
+            
+            # Mettre à jour status.json immédiatement
+            global MATCHS
+            MATCHS = matches  # Mettre à jour la variable globale
+            sauvegarder_status()  # Mettre à jour status.json
+            
+            log(f"🗑️ Match supprimé: {deleted.get('nom')} ({deleted.get('url')})", 'error')
+            log(f"📊 Matchs restants: {len(matches)}", 'info')
+            log(f"💾 matches.json mis à jour avec succès", 'success')
+            log(f"💾 status.json mis à jour - le site public reflète le changement", 'success')
+            log(f"⏸️ Le match ne sera plus surveillé au prochain cycle", 'info')
             
             return jsonify({"success": True, "deleted": deleted})
         else:
@@ -378,9 +422,11 @@ def api_force_check(index):
             
             # Lancer la vérification dans un thread séparé pour ne pas bloquer
             def verifier_en_background():
-                print(f"🔄 Vérification forcée de {nom}...")
+                url_match = match.get("url", "URL inconnue")
+                log(f"🔄 Vérification forcée de {nom}...", 'info')
+                log(f"🌐 URL: {url_match}", 'info')
                 verifier_match(match)
-                print(f"✅ Vérification forcée de {nom} terminée")
+                log(f"✅ Vérification forcée de {nom} terminée", 'success')
             
             threading.Thread(target=verifier_en_background, daemon=True).start()
             
@@ -618,13 +664,27 @@ def api_track_telegram_click():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/logs', methods=['GET'])
+def api_get_logs():
+    """Retourne les logs du backend"""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        logs = list(backend_logs)[-limit:]  # Derniers N logs
+        return jsonify({
+            "success": True,
+            "logs": logs,
+            "total": len(backend_logs)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 def start_flask_api():
     """Démarre l'API Flask dans un thread séparé"""
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
 # Démarrer l'API Flask en arrière-plan
 threading.Thread(target=start_flask_api, daemon=True).start()
-print("🔌 API Flask démarrée sur le port 5000")
+log("🔌 API Flask démarrée sur le port 5000", 'success')
 
 # Démarrer le serveur web dans un thread séparé
 def start_web_server():
@@ -777,23 +837,27 @@ def start_web_server():
             pass
     
     server = HTTPServer(('0.0.0.0', port), CustomHandler)
-    print(f"🌐 Serveur web démarré sur le port {port}")
-    print(f"📱 Site accessible sur http://localhost:{port}/index.html")
+    log(f"🌐 Serveur web démarré sur le port {port}", 'success')
+    log(f"📱 Site accessible sur http://localhost:{port}/index.html", 'info')
     server.serve_forever()
 
 # Lancer le serveur web en arrière-plan
 threading.Thread(target=start_web_server, daemon=True).start()
 
-print("🚀 Bot PSM démarré avec serveur web intégré!")
+log("🚀 Bot PSM démarré avec serveur web intégré!", 'success')
 
 # ✅ BOUCLE PRINCIPALE MULTI-MATCHS
 while True:
     MATCHS = charger_matchs()  # Recharger les matchs à chaque itération
+    log(f"📋 Cycle de surveillance: {len(MATCHS)} match(s) à vérifier", 'info')
+    if len(MATCHS) > 0:
+        matchs_noms = ', '.join([m['nom'] for m in MATCHS])
+        log(f"📝 Matchs: {matchs_noms}", 'info')
     for match in MATCHS:
         verifier_match(match)
 
     pause = 90 + random.randint(0, 5)
-    print(f"⏳ Pause {pause} secondes...")
+    log(f"⏳ Pause {pause} secondes...", 'info')
     time.sleep(pause)
 
 

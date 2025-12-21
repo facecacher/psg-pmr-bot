@@ -412,54 +412,8 @@
             <p class="hero-sub">Surveillance automatique de la billetterie PSG. Tu reçois une alerte dès qu'une place PMR se libère.</p>
         </div>
 
-        <div class="grid">
-            <div class="card">
-                <div class="card-tag">Ligue 1</div>
-                <div class="match-name">PSG vs PARIS FC</div>
-                
-                <div class="status-row">
-                    <div class="status-icon">❌</div>
-                    <div class="status-text">
-                        <div class="status-label">Disponibilité</div>
-                        <div class="status-value">Aucune place PMR</div>
-                    </div>
-                </div>
-
-                <div class="meta-grid">
-                    <div class="meta-item">
-                        <div class="meta-label">Dernier check</div>
-                        <div class="meta-value">Il y a 2 min</div>
-                    </div>
-                    <div class="meta-item">
-                        <div class="meta-label">Vérifications</div>
-                        <div class="meta-value">247</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-tag">Ligue 1</div>
-                <div class="match-name">PSG vs LILLE</div>
-                
-                <div class="status-row">
-                    <div class="status-icon">❌</div>
-                    <div class="status-text">
-                        <div class="status-label">Disponibilité</div>
-                        <div class="status-value">Aucune place PMR</div>
-                    </div>
-                </div>
-
-                <div class="meta-grid">
-                    <div class="meta-item">
-                        <div class="meta-label">Dernier check</div>
-                        <div class="meta-value">Il y a 2 min</div>
-                    </div>
-                    <div class="meta-item">
-                        <div class="meta-label">Vérifications</div>
-                        <div class="meta-value">247</div>
-                    </div>
-                </div>
-            </div>
+        <div class="grid" id="matches-container">
+            <!-- Les cards seront créées dynamiquement par JavaScript -->
         </div>
 
         <div class="stats-container">
@@ -523,38 +477,40 @@
                 const response = await fetch(`${BOT_URL}/status.json`);
                 const data = await response.json();
                 
-                // Mettre à jour les cards de matchs
-                const matchCards = document.querySelectorAll('.card');
-                data.matchs.forEach((match, index) => {
-                    if (matchCards[index] && index < 2) {
-                        const card = matchCards[index];
+                // Créer les cards dynamiquement
+                const container = document.getElementById('matches-container');
+                container.innerHTML = ''; // Vider le conteneur
+                
+                // Créer une card pour chaque match
+                data.matchs.forEach((match) => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <div class="card-tag">Ligue 1</div>
+                        <div class="match-name">${match.nom}</div>
                         
-                        // Nom du match
-                        const matchName = card.querySelector('.match-name');
-                        if (matchName) matchName.textContent = match.nom;
-                        
-                        // Status
-                        const statusValue = card.querySelector('.status-value');
-                        const statusIcon = card.querySelector('.status-icon');
-                        if (match.pmr_disponible) {
-                            if (statusValue) {
-                                statusValue.textContent = 'Places PMR disponibles !';
-                                statusValue.classList.add('active');
-                            }
-                            if (statusIcon) statusIcon.textContent = '✅';
-                        } else {
-                            if (statusValue) {
-                                statusValue.textContent = 'Aucune place PMR';
-                                statusValue.classList.remove('active');
-                            }
-                            if (statusIcon) statusIcon.textContent = '❌';
-                        }
-                        
-                        // Meta données
-                        const metaValues = card.querySelectorAll('.meta-value');
-                        if (metaValues[0]) metaValues[0].textContent = match.dernier_check;
-                        if (metaValues[1]) metaValues[1].textContent = match.nb_checks;
-                    }
+                        <div class="status-row">
+                            <div class="status-icon">${match.pmr_disponible ? '✅' : '❌'}</div>
+                            <div class="status-text">
+                                <div class="status-label">Disponibilité</div>
+                                <div class="status-value ${match.pmr_disponible ? 'active' : ''}">
+                                    ${match.pmr_disponible ? 'Places PMR disponibles !' : 'Aucune place PMR'}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="meta-grid">
+                            <div class="meta-item">
+                                <div class="meta-label">Dernier check</div>
+                                <div class="meta-value">${match.dernier_check}</div>
+                            </div>
+                            <div class="meta-item">
+                                <div class="meta-label">Vérifications</div>
+                                <div class="meta-value">${match.nb_checks}</div>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(card);
                 });
                 
                 // Mettre à jour le footer
