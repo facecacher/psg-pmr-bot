@@ -75,10 +75,10 @@ def verifier_match(match):
             print(f"{nom} → PMR trouvées :", len(pmr_elements))
 
             if len(pmr_elements) > 0:
-                envoyer_message(f"✅ [{heure}] PLACE PMR DISPONIBLE POUR {nom}")
+                envoyer_message(f"🔥 ALERTE PLACE PMR DISPONIBLE ! 🔥\n\n🎟️ Match : {nom}\n✅ Places PMR trouvées !\n\n👉 Fonce sur la billetterie maintenant !")
             else:
                 if datetime.now() - dernier_message_indispo[nom] >= timedelta(hours=8):
-                    envoyer_message(f"❌ [{heure}] TOUJOURS PAS DE PLACE PMR POUR {nom}")
+                    envoyer_message(f"😴 Pas encore de places PMR...\n\n🎟️ Match : {nom}\n❌ Aucune place PMR disponible pour le moment\n\n💪 On continue de surveiller pour toi !")
                     dernier_message_indispo[nom] = datetime.now()
                 else:
                     print(f"{nom} → Pas de PMR (cooldown actif)")
