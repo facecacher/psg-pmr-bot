@@ -180,21 +180,39 @@ def start_web_server():
             # Si on demande status.json, le servir depuis la racine du projet
             if self.path == '/status.json' or self.path == '/status.json/':
                 import os
-                # status.json est dans /app (WORKDIR)
-                status_path = '/app/status.json'
+                # status.json est dans le WORKDIR (/app)
+                # Utiliser le chemin absolu depuis le répertoire de travail
+                status_path = os.path.join(os.getcwd(), 'status.json')
+                print(f"🔍 Tentative de servir status.json depuis: {status_path}")
+                print(f"🔍 Fichier existe: {os.path.exists(status_path)}")
+                
                 if os.path.exists(status_path):
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
                     with open(status_path, 'rb') as f:
                         self.wfile.write(f.read())
+                    print(f"✅ status.json servi avec succès")
                     return
                 else:
-                    self.send_response(404)
-                    self.send_header('Content-type', 'text/plain')
-                    self.end_headers()
-                    self.wfile.write(b'status.json not found')
-                    return
+                    # Essayer aussi /app/status.json au cas où
+                    alt_path = '/app/status.json'
+                    if os.path.exists(alt_path):
+                        self.send_response(200)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        with open(alt_path, 'rb') as f:
+                            self.wfile.write(f.read())
+                        print(f"✅ status.json servi depuis {alt_path}")
+                        return
+                    else:
+                        self.send_response(404)
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        error_msg = json.dumps({"error": "status.json not found", "cwd": os.getcwd(), "paths_checked": [status_path, alt_path]})
+                        self.wfile.write(error_msg.encode('utf-8'))
+                        print(f"❌ status.json non trouvé. CWD: {os.getcwd()}")
+                        return
             # Sinon, servir depuis le dossier Site
             return super().do_GET()
         
