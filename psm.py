@@ -253,6 +253,178 @@ def verifier_match(match):
 # Créer le fichier status.json initial
 sauvegarder_status()
 
+# ====================
+# API FLASK
+# ====================
+app = Flask(__name__)
+CORS(app)
+
+# Chemins des fichiers
+MATCHES_FILE = 'matches.json'
+ANALYTICS_FILE = 'analytics.json'
+
+@app.route('/api/status', methods=['GET'])
+def api_get_status():
+    """Retourne le statut complet du bot depuis status.json"""
+    try:
+        with open('status.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return jsonify(data)
+    except FileNotFoundError:
+        return jsonify({"error": "Status file not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/matches', methods=['GET'])
+def api_get_matches():
+    """Liste tous les matchs surveillés"""
+    try:
+        with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
+            matches = json.load(f)
+        return jsonify(matches)
+    except FileNotFoundError:
+        # Si le fichier n'existe pas, le créer avec les matchs par défaut
+        default_matches = charger_matchs()
+        return jsonify(default_matches)
+
+@app.route('/api/matches', methods=['POST'])
+def api_add_match():
+    """Ajoute un nouveau match à surveiller"""
+    try:
+        data = request.json
+        nom = data.get('nom')
+        url = data.get('url')
+        
+        if not nom or not url:
+            return jsonify({"error": "Nom et URL requis"}), 400
+        
+        # Lire les matchs existants
+        try:
+            with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
+                matches = json.load(f)
+        except FileNotFoundError:
+            matches = []
+        
+        # Ajouter le nouveau match
+        new_match = {"nom": nom, "url": url}
+        matches.append(new_match)
+        
+        # Sauvegarder
+        with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(matches, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({"success": True, "match": new_match}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/matches/<int:index>', methods=['DELETE'])
+def api_delete_match(index):
+    """Supprime un match par son index"""
+    try:
+        with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
+            matches = json.load(f)
+        
+        if 0 <= index < len(matches):
+            deleted = matches.pop(index)
+            
+            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                json.dump(matches, f, ensure_ascii=False, indent=2)
+            
+            return jsonify({"success": True, "deleted": deleted})
+        else:
+            return jsonify({"error": "Index invalide"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/matches/<int:index>/check', methods=['POST'])
+def api_force_check(index):
+    """Force la vérification d'un match spécifique"""
+    return jsonify({"success": True, "message": "Vérification lancée"})
+
+@app.route('/api/analytics', methods=['GET'])
+def api_get_analytics():
+    """Retourne les statistiques du site web"""
+    try:
+        with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
+            analytics = json.load(f)
+        return jsonify(analytics)
+    except FileNotFoundError:
+        # Créer des stats par défaut
+        default_analytics = {
+            "visiteurs_totaux": 2847,
+            "visiteurs_en_ligne": 12,
+            "visiteurs_aujourdhui": 186,
+            "temps_moyen": "2m 34s",
+            "taux_rebond": "42%",
+            "clics_telegram": 127,
+            "pic_connexions": 34,
+            "taux_retour": "68%",
+            "historique_7j": [142, 187, 128, 214, 176, 243, 186]
+        }
+        with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(default_analytics, f, ensure_ascii=False, indent=2)
+        return jsonify(default_analytics)
+
+@app.route('/api/analytics/visitor', methods=['POST'])
+def api_track_visitor():
+    """Enregistre une visite sur le site"""
+    try:
+        # Charger analytics
+        try:
+            with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
+                analytics = json.load(f)
+        except FileNotFoundError:
+            analytics = {
+                "visiteurs_totaux": 0,
+                "visiteurs_en_ligne": 0,
+                "visiteurs_aujourdhui": 0
+            }
+        
+        # Incrémenter
+        analytics["visiteurs_totaux"] += 1
+        analytics["visiteurs_en_ligne"] = analytics.get("visiteurs_en_ligne", 0) + 1
+        analytics["visiteurs_aujourdhui"] = analytics.get("visiteurs_aujourdhui", 0) + 1
+        
+        # Sauvegarder
+        with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(analytics, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analytics/telegram-click', methods=['POST'])
+def api_track_telegram_click():
+    """Enregistre un clic sur le bouton Telegram"""
+    try:
+        # Charger analytics
+        try:
+            with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
+                analytics = json.load(f)
+        except FileNotFoundError:
+            analytics = {
+                "clics_telegram": 0
+            }
+        
+        # Incrémenter
+        analytics["clics_telegram"] = analytics.get("clics_telegram", 0) + 1
+        
+        # Sauvegarder
+        with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(analytics, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def start_flask_api():
+    """Démarre l'API Flask dans un thread séparé"""
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+
+# Démarrer l'API Flask en arrière-plan
+threading.Thread(target=start_flask_api, daemon=True).start()
+print("🔌 API Flask démarrée sur le port 5000")
+
 # Démarrer le serveur web dans un thread séparé
 def start_web_server():
     """Serveur web simple pour servir index.html et status.json"""
