@@ -569,12 +569,21 @@
         async function chargerAnalyseGroq(match) {
             try {
                 const response = await fetch(`${BOT_URL}/api/groq/analyze?match=${encodeURIComponent(match.nom)}`);
+                
+                if (!response.ok) {
+                    console.error('Erreur HTTP analyse Groq:', response.status);
+                    return;
+                }
+                
                 const data = await response.json();
                 
-                if (data.error) {
+                // Vérifier si c'est une erreur (string) ou des données avec error: true (fallback)
+                if (data.error && typeof data.error === 'string') {
                     console.error('Erreur analyse Groq:', data.error);
                     return;
                 }
+                
+                // Si error: true, ce sont des données par défaut, on les affiche quand même
                 
                 // 1. Mettre à jour l'analyse IA
                 if (data.analysis) {
