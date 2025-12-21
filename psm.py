@@ -9,6 +9,9 @@ import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import locale
 
+# Configuration Playwright pour Docker
+os.environ['PLAYWRIGHT_BROWSERS_PATH'] = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '/root/.cache/ms-playwright')
+
 # Configuration locale pour les dates en français
 try:
     locale.setlocale(locale.LC_TIME, 'fr_FR.UTF-8')
@@ -141,6 +144,7 @@ def verifier_match(match):
 
     try:
         with sync_playwright() as p:
+            # Configuration pour Docker/headless
             browser = p.chromium.launch(
                 headless=True,
                 args=[
@@ -148,9 +152,15 @@ def verifier_match(match):
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    '--disable-extensions',
                     '--window-size=1920x1080',
-                    '--disable-blink-features=AutomationControlled'
-                ]
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--single-process',
+                    '--no-zygote'
+                ],
+                timeout=60000
             )
             
             context = browser.new_context(
@@ -165,8 +175,14 @@ def verifier_match(match):
             page.set_default_navigation_timeout(120000)
 
             print(f"🌐 Chargement de {nom}...")
-            page.goto(url, timeout=120000, wait_until="domcontentloaded")
-            print(f"✅ Page chargée pour {nom}")
+            try:
+                page.goto(url, timeout=120000, wait_until="domcontentloaded")
+                print(f"✅ Page chargée pour {nom}")
+            except Exception as goto_error:
+                print(f"⚠️ Erreur lors du chargement de la page pour {nom}: {goto_error}")
+                print(f"🔄 Nouvelle tentative...")
+                page.goto(url, timeout=120000, wait_until="domcontentloaded")
+                print(f"✅ Page chargée pour {nom} (2ème tentative)")
             
             # Attendre que la page soit prête avec un timeout plus long
             try:
