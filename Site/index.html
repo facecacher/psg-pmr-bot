@@ -486,9 +486,6 @@
                     const card = document.createElement('div');
                     card.className = 'card';
                     card.style.cursor = 'pointer';
-                    card.onclick = () => {
-                        window.location.href = `more.html?match=${encodeURIComponent(match.nom)}`;
-                    };
                     card.innerHTML = `
                         <div class="card-tag">Ligue 1</div>
                         <div class="match-name">${match.nom}</div>
@@ -525,6 +522,16 @@
                             </a>
                         </div>
                     `;
+                    
+                    // Ajouter l'event listener APRÈS avoir défini innerHTML
+                    card.addEventListener('click', (e) => {
+                        // Ne pas rediriger si on clique sur le lien
+                        if (e.target.closest('a')) {
+                            return;
+                        }
+                        window.location.href = `more.html?match=${encodeURIComponent(match.nom)}`;
+                    });
+                    
                     container.appendChild(card);
                 });
                 
