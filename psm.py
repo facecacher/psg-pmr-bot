@@ -257,7 +257,9 @@ sauvegarder_status()
 # API FLASK
 # ====================
 app = Flask(__name__)
-CORS(app)
+# Désactiver CORS dans Flask car le serveur web le gère déjà
+# Cela évite les conflits de headers CORS multiples
+CORS(app, resources={r"/api/*": {"origins": "*", "supports_credentials": False}})
 
 # Chemins des fichiers
 MATCHES_FILE = 'matches.json'
@@ -474,9 +476,16 @@ def start_web_server():
                 with urllib.request.urlopen(req, timeout=10) as response:
                     # Envoyer la réponse
                     self.send_response(response.getcode())
+                    # Copier les headers de Flask SAUF les headers CORS (on les gère nous-mêmes)
                     for header, value in response.headers.items():
-                        if header.lower() not in ['connection', 'transfer-encoding']:
+                        header_lower = header.lower()
+                        if header_lower not in ['connection', 'transfer-encoding', 
+                                                'access-control-allow-origin', 
+                                                'access-control-allow-methods',
+                                                'access-control-allow-headers',
+                                                'access-control-allow-credentials']:
                             self.send_header(header, value)
+                    # Les headers CORS seront ajoutés par end_headers()
                     self.end_headers()
                     self.wfile.write(response.read())
                     
