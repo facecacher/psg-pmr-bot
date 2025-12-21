@@ -563,6 +563,26 @@
                     footerTime.textContent = `Mise à jour ${data.derniere_mise_a_jour}`;
                 }
                 
+                // Mettre à jour les statistiques du système
+                if (data.statistiques) {
+                    const stats = data.statistiques;
+                    const statNumbers = document.querySelectorAll('.stat-number');
+                    
+                    if (statNumbers[0]) {
+                        // Format avec virgule pour les grands nombres
+                        statNumbers[0].textContent = stats.verifications_totales.toLocaleString('fr-FR');
+                    }
+                    if (statNumbers[1]) {
+                        statNumbers[1].textContent = stats.alertes_envoyees;
+                    }
+                    if (statNumbers[2]) {
+                        statNumbers[2].textContent = stats.taux_disponibilite;
+                    }
+                    if (statNumbers[3]) {
+                        statNumbers[3].textContent = stats.matchs_surveilles;
+                    }
+                }
+                
             } catch (error) {
                 console.error('Erreur lors du chargement des données:', error);
                 console.log('URL tentée:', `${BOT_URL}/status.json`);

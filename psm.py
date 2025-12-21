@@ -48,6 +48,9 @@ def sauvegarder_status():
         "matchs": []
     }
     
+    total_checks = 0
+    alertes_envoyees = 0
+    
     for match in MATCHS:
         nom = match["nom"]
         
@@ -68,6 +71,11 @@ def sauvegarder_status():
         # Récupérer les statistiques
         nb_checks = nb_checks_par_match.get(nom, 0)
         pmr_dispo = pmr_disponible_par_match.get(nom, False)
+        total_checks += nb_checks
+        
+        # Compter les alertes (quand PMR était disponible)
+        if pmr_dispo:
+            alertes_envoyees += 1
         
         status["matchs"].append({
             "nom": nom,
@@ -76,6 +84,22 @@ def sauvegarder_status():
             "dernier_check": dernier_check_str,
             "nb_checks": nb_checks
         })
+    
+    # Calculer le taux de disponibilité (pourcentage de fois où PMR était disponible)
+    nb_matchs = len(MATCHS)
+    if nb_matchs > 0:
+        matchs_avec_pmr = sum(1 for nom in MATCHS if pmr_disponible_par_match.get(nom, False))
+        taux_disponibilite = round((matchs_avec_pmr / nb_matchs) * 100, 1)
+    else:
+        taux_disponibilite = 0.0
+    
+    # Ajouter les statistiques globales
+    status["statistiques"] = {
+        "verifications_totales": total_checks,
+        "alertes_envoyees": alertes_envoyees,
+        "taux_disponibilite": f"{taux_disponibilite}%",
+        "matchs_surveilles": nb_matchs
+    }
     
     import os
     status_path = 'status.json'
