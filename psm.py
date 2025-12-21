@@ -224,6 +224,11 @@ def verifier_match(match):
 
     except Exception as e:
         print(f"⚠️ Erreur sur {nom} :", e)
+        import traceback
+        print(f"📋 Détails de l'erreur :")
+        traceback.print_exc()
+        # Sauvegarder le status même en cas d'erreur
+        sauvegarder_status()
 
 # Créer le fichier status.json initial
 sauvegarder_status()
