@@ -24,10 +24,14 @@ HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
 # Vérification des variables d'environnement
 if not TELEGRAM_TOKEN:
     print("❌ ERREUR: TELEGRAM_TOKEN n'est pas défini!")
-    exit(1)
+    print("💡 Vérifiez que la variable d'environnement TELEGRAM_TOKEN est configurée dans Dokploy")
+    import sys
+    sys.exit(1)
 if not CHAT_ID:
     print("❌ ERREUR: TELEGRAM_CHAT_ID n'est pas défini!")
-    exit(1)
+    print("💡 Vérifiez que la variable d'environnement TELEGRAM_CHAT_ID est configurée dans Dokploy")
+    import sys
+    sys.exit(1)
 
 print("🚀 Bot PSM démarré!")
 print(f"📋 Mode headless: {HEADLESS}")
@@ -85,12 +89,22 @@ def verifier_match(match):
 
 # ✅ BOUCLE PRINCIPALE MULTI-MATCHS
 print("🔄 Démarrage de la surveillance...")
-while True:
-    for match in MATCHS:
-        verifier_match(match)
+import sys
+try:
+    while True:
+        for match in MATCHS:
+            verifier_match(match)
 
-    pause = 90 + random.randint(0, 5)
-    print(f"⏳ Pause {pause} secondes...")
-    time.sleep(pause)
+        pause = 90 + random.randint(0, 5)
+        print(f"⏳ Pause {pause} secondes...")
+        sys.stdout.flush()  # Force l'affichage des logs
+        time.sleep(pause)
+except KeyboardInterrupt:
+    print("🛑 Arrêt demandé par l'utilisateur")
+except Exception as e:
+    print(f"💥 ERREUR FATALE: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 
 

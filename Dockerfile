@@ -8,4 +8,5 @@ WORKDIR /app
 COPY . /app
 RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
-CMD ["python", "psm.py"]
+# Utiliser python -u pour les logs non bufferisés
+CMD ["python", "-u", "psm.py"]
