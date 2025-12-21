@@ -21,17 +21,29 @@ except:
     except:
         pass  # Si la locale n'est pas disponible, on utilisera une fonction de remplacement
 
-# ✅ LISTE DES MATCHS À SURVEILLER
-MATCHS = [
-    {
-        "nom": "PSG vs PARIS FC",
-        "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-sg-vs-paris-fc-1"
-    },
-    {
-        "nom": "PSG vs RENNE",
-        "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-vs-rennes-5"
-    },
-]
+# Charger les matchs depuis le fichier JSON
+def charger_matchs():
+    try:
+        with open('matches.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        # Matchs par défaut si le fichier n'existe pas
+        matchs_default = [
+            {
+                "nom": "PSG vs PARIS FC",
+                "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-sg-vs-paris-fc-1"
+            },
+            {
+                "nom": "PSG vs RENNE",
+                "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-vs-rennes-5"
+            }
+        ]
+        with open('matches.json', 'w', encoding='utf-8') as f:
+            json.dump(matchs_default, f, ensure_ascii=False, indent=2)
+        return matchs_default
+
+# ✅ LISTE DES MATCHS À SURVEILLER (chargée dynamiquement)
+MATCHS = charger_matchs()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8222793392:AAFBtlCNAlPyUYgf1aup06HAvRO9V14DmRo")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "-1003428870741")
@@ -311,6 +323,7 @@ print("🚀 Bot PSM démarré avec serveur web intégré!")
 
 # ✅ BOUCLE PRINCIPALE MULTI-MATCHS
 while True:
+    MATCHS = charger_matchs()  # Recharger les matchs à chaque itération
     for match in MATCHS:
         verifier_match(match)
 

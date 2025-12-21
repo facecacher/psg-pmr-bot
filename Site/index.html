@@ -595,5 +595,19 @@
         // Recharger toutes les 10 secondes
         setInterval(chargerStatus, 10000);
     </script>
+    
+    <script>
+        // Tracker les visiteurs
+        fetch('http://localhost:5000/api/analytics/visitor', {
+            method: 'POST'
+        }).catch(() => {});
+        
+        // Tracker le clic sur le bouton Telegram
+        document.querySelector('a[href*="t.me"]')?.addEventListener('click', () => {
+            fetch('http://localhost:5000/api/analytics/telegram-click', {
+                method: 'POST'
+            }).catch(() => {});
+        });
+    </script>
 </body>
 </html>
