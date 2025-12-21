@@ -44,6 +44,6 @@ COPY Site/ ./Site/
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 
-EXPOSE 8080
+EXPOSE 8081
 
 CMD ["python", "-u", "psm.py"]

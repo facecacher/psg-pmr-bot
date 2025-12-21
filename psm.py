@@ -163,7 +163,7 @@ sauvegarder_status()
 # Démarrer le serveur web dans un thread séparé
 def start_web_server():
     """Serveur web simple pour servir index.html et status.json"""
-    port = 8080
+    port = 8081  # Port différent du site pour éviter les conflits
     
     class CustomHandler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
