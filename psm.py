@@ -77,8 +77,11 @@ def sauvegarder_status():
             "nb_checks": nb_checks
         })
     
-    with open('status.json', 'w', encoding='utf-8') as f:
+    import os
+    status_path = 'status.json'
+    with open(status_path, 'w', encoding='utf-8') as f:
         json.dump(status, f, ensure_ascii=False, indent=2)
+    print(f"💾 status.json sauvegardé dans: {os.path.abspath(status_path)}")
 
 def verifier_match(match):
     nom = match["nom"]
