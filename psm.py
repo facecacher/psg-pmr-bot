@@ -437,11 +437,63 @@ def start_web_server():
         def end_headers(self):
             # Ajouter les headers CORS pour permettre l'accès depuis n'importe où
             self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE')
             self.send_header('Access-Control-Allow-Headers', '*')
             super().end_headers()
         
+        def do_OPTIONS(self):
+            """Gérer les requêtes OPTIONS pour CORS"""
+            self.send_response(200)
+            self.end_headers()
+        
+        def _proxy_to_flask(self, method='GET'):
+            """Proxy les requêtes /api/* vers Flask sur le port 5000"""
+            import urllib.request
+            import urllib.parse
+            
+            try:
+                # Construire l'URL Flask
+                flask_url = f'http://localhost:5000{self.path}'
+                
+                # Préparer la requête
+                req_data = None
+                if method == 'POST' or method == 'PUT' or method == 'DELETE':
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    if content_length > 0:
+                        req_data = self.rfile.read(content_length)
+                
+                # Créer la requête
+                req = urllib.request.Request(flask_url, data=req_data, method=method)
+                
+                # Copier les headers
+                for header, value in self.headers.items():
+                    if header.lower() not in ['host', 'content-length']:
+                        req.add_header(header, value)
+                
+                # Faire la requête
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    # Envoyer la réponse
+                    self.send_response(response.getcode())
+                    for header, value in response.headers.items():
+                        if header.lower() not in ['connection', 'transfer-encoding']:
+                            self.send_header(header, value)
+                    self.end_headers()
+                    self.wfile.write(response.read())
+                    
+            except Exception as e:
+                print(f"❌ Erreur proxy Flask: {e}")
+                self.send_response(502)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error_msg = json.dumps({"error": f"Proxy error: {str(e)}"})
+                self.wfile.write(error_msg.encode('utf-8'))
+        
         def do_GET(self):
+            # Si c'est une requête API, proxy vers Flask
+            if self.path.startswith('/api/'):
+                self._proxy_to_flask('GET')
+                return
+            
             # Si on demande status.json, le servir depuis la racine du projet
             if self.path == '/status.json' or self.path == '/status.json/':
                 import os
@@ -478,8 +530,39 @@ def start_web_server():
                         self.wfile.write(error_msg.encode('utf-8'))
                         print(f"❌ status.json non trouvé. CWD: {os.getcwd()}")
                         return
+            
+            # Gérer les routes sans extension (comme /admin)
+            if self.path == '/admin' or self.path == '/admin/':
+                self.path = '/admin.html'
+            
             # Sinon, servir depuis le dossier Site
             return super().do_GET()
+        
+        def do_POST(self):
+            # Si c'est une requête API, proxy vers Flask
+            if self.path.startswith('/api/'):
+                self._proxy_to_flask('POST')
+                return
+            
+            # Sinon, 404
+            self.send_response(404)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            error_msg = json.dumps({"error": "Not found"})
+            self.wfile.write(error_msg.encode('utf-8'))
+        
+        def do_DELETE(self):
+            # Si c'est une requête API, proxy vers Flask
+            if self.path.startswith('/api/'):
+                self._proxy_to_flask('DELETE')
+                return
+            
+            # Sinon, 404
+            self.send_response(404)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            error_msg = json.dumps({"error": "Not found"})
+            self.wfile.write(error_msg.encode('utf-8'))
         
         def log_message(self, format, *args):
             # Réduire les logs verbeux
