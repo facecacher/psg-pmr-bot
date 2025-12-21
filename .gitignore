@@ -1,4 +1,7 @@
 status.json
+matches.json
+analytics.json
+groq_cache.json
 __pycache__/
 *.pyc
 *.pyo

@@ -230,7 +230,7 @@
                 <!-- Comparaison matchs -->
                 <div class="glass rounded-3xl p-8 slide-in" style="animation-delay: 0.3s">
                     <h2 class="text-2xl font-black mb-6">Comparaison avec autres matchs</h2>
-                    <div class="space-y-4">
+                    <div class="space-y-4 comparison-container">
                         <div>
                             <div class="flex justify-between mb-2">
                                 <span class="font-semibold">PSG vs OM</span>
@@ -355,18 +355,18 @@
                 <div class="glass rounded-3xl p-6 slide-in" style="animation-delay: 0.3s">
                     <h3 class="text-xl font-black mb-6">Météo prévue</h3>
                     <div class="text-center">
-                        <div class="text-6xl mb-4">🌤️</div>
-                        <div class="text-5xl font-black mb-2">8°C</div>
-                        <div class="text-sm text-gray-400 mb-6">Partiellement nuageux</div>
+                        <div class="text-6xl mb-4" id="weather-emoji">🌤️</div>
+                        <div class="text-5xl font-black mb-2" id="weather-temp">8°C</div>
+                        <div class="text-sm text-gray-400 mb-6" id="weather-condition">Partiellement nuageux</div>
                         <div class="grid grid-cols-2 gap-3">
                             <div class="stat-card p-4 rounded-xl">
                                 <div class="text-2xl mb-1">💧</div>
-                                <div class="font-bold">15%</div>
+                                <div class="font-bold" id="weather-rain">15%</div>
                                 <div class="text-xs text-gray-400">Pluie</div>
                             </div>
                             <div class="stat-card p-4 rounded-xl">
                                 <div class="text-2xl mb-1">💨</div>
-                                <div class="font-bold">12 km/h</div>
+                                <div class="font-bold" id="weather-wind">12 km/h</div>
                                 <div class="text-xs text-gray-400">Vent</div>
                             </div>
                         </div>
@@ -376,7 +376,7 @@
                 <!-- Composition PSG -->
                 <div class="glass rounded-3xl p-6 slide-in" style="animation-delay: 0.4s">
                     <h3 class="text-xl font-black mb-6">Composition probable PSG</h3>
-                    <div class="space-y-3 text-sm">
+                    <div class="space-y-3 text-sm" id="lineup-psg">
                         <div class="flex items-start gap-3 glass p-3 rounded-lg">
                             <span class="font-mono text-gray-400 min-w-[28px]">GK</span>
                             <span class="font-semibold">Donnarumma</span>
@@ -399,7 +399,7 @@
                 <!-- Composition OM -->
                 <div class="glass rounded-3xl p-6 slide-in" style="animation-delay: 0.5s">
                     <h3 class="text-xl font-black mb-6">Composition probable OM</h3>
-                    <div class="space-y-3 text-sm">
+                    <div class="space-y-3 text-sm" id="lineup-away">
                         <div class="flex items-start gap-3 glass p-3 rounded-lg">
                             <span class="font-mono text-gray-400 min-w-[28px]">GK</span>
                             <span class="font-semibold">López</span>
@@ -553,8 +553,7 @@
                     })
                     .catch(err => console.error('Erreur chargement stats:', err));
                 
-                // Mettre à jour la comparaison avec autres matchs
-                updateComparison(data.matchs, match);
+                // La comparaison sera mise à jour par chargerAnalyseGroq()
                 
                 // Charger l'analyse Groq si demandé
                 if (reloadGroq) {
@@ -566,60 +565,70 @@
             }
         }
         
-        // Charger l'analyse Groq
+        // Charger l'analyse Groq complète
         async function chargerAnalyseGroq(match) {
             try {
                 const response = await fetch(`${BOT_URL}/api/groq/analyze?match=${encodeURIComponent(match.nom)}`);
-                const analysis = await response.json();
+                const data = await response.json();
                 
-                if (analysis.error) {
-                    console.error('Erreur analyse Groq:', analysis.error);
+                if (data.error) {
+                    console.error('Erreur analyse Groq:', data.error);
                     return;
                 }
                 
-                // Mettre à jour le hype level (dans la section IA)
-                const hypeLevel = document.querySelector('.text-7xl.gradient-text');
-                if (hypeLevel) {
-                    hypeLevel.textContent = `${analysis.hype_level}%`;
-                }
-                
-                // Mettre à jour le label hype (dans la card avec l'emoji 🔥)
-                const statCards = document.querySelectorAll('.stat-card.p-6.rounded-2xl');
-                if (statCards.length >= 2) {
-                    const hypeLabelCard = statCards[1];
-                    const hypeLabel = hypeLabelCard.querySelector('.text-2xl.font-bold');
-                    if (hypeLabel) {
-                        hypeLabel.textContent = analysis.hype_label;
+                // 1. Mettre à jour l'analyse IA
+                if (data.analysis) {
+                    const hypeLevel = document.querySelector('.text-7xl.gradient-text');
+                    if (hypeLevel) {
+                        hypeLevel.textContent = `${data.analysis.hype_score}%`;
+                    }
+                    
+                    const statCards = document.querySelectorAll('.stat-card.p-6.rounded-2xl');
+                    if (statCards.length >= 2) {
+                        const hypeLabelCard = statCards[1];
+                        const hypeLabel = hypeLabelCard.querySelector('.text-2xl.font-bold');
+                        if (hypeLabel) {
+                            const score = data.analysis.hype_score;
+                            const label = score >= 90 ? 'Très élevé' : score >= 75 ? 'Élevé' : score >= 60 ? 'Moyen' : 'Faible';
+                            hypeLabel.textContent = label;
+                        }
+                    }
+                    
+                    if (statCards.length >= 3) {
+                        const affluenceCard = statCards[2];
+                        const affluenceEl = affluenceCard.querySelector('.text-2xl.font-bold');
+                        if (affluenceEl) {
+                            affluenceEl.textContent = `${data.analysis.affluence_prevue}%`;
+                        }
+                    }
+                    
+                    const analyseText = document.querySelector('.text-gray-300.leading-relaxed');
+                    if (analyseText) {
+                        let analyseHTML = data.analysis.analyse;
+                        if (data.analysis.probabilite_pmr !== undefined) {
+                            analyseHTML = analyseHTML.replace(
+                                new RegExp(`(${data.analysis.probabilite_pmr}%)`, 'g'),
+                                `<span class="text-white font-semibold">${data.analysis.probabilite_pmr}%</span>`
+                            );
+                        }
+                        analyseText.innerHTML = analyseHTML;
                     }
                 }
                 
-                // Mettre à jour l'affluence prévue (dans la card avec l'emoji 👥)
-                if (statCards.length >= 3) {
-                    const affluenceCard = statCards[2];
-                    const affluenceEl = affluenceCard.querySelector('.text-2xl.font-bold');
-                    if (affluenceEl) {
-                        affluenceEl.textContent = `${analysis.affluence_prevue}%`;
-                    }
+                // 2. Mettre à jour la comparaison (avec vrais noms de matchs)
+                if (data.comparison) {
+                    updateComparison(data.comparison, match.nom);
                 }
                 
-                // Mettre à jour l'analyse textuelle
-                const analyseText = document.querySelector('.text-gray-300.leading-relaxed');
-                if (analyseText) {
-                    let analyseHTML = analysis.analyse;
-                    // Mettre en évidence la probabilité si présente
-                    if (analysis.probabilite_disponibilite !== undefined) {
-                        analyseHTML = analyseHTML.replace(
-                            new RegExp(`(${analysis.probabilite_disponibilite}%)`, 'g'),
-                            `<span class="text-white font-semibold">${analysis.probabilite_disponibilite}%</span>`
-                        );
-                    }
-                    analyseText.innerHTML = analyseHTML;
+                // 3. Mettre à jour la météo
+                if (data.weather) {
+                    updateWeather(data.weather);
                 }
                 
-                // Mettre à jour le titre de l'analyse (remplacer "Analyse IA Claude" par "Analyse IA Groq")
-                const analyseTitle = document.querySelector('.font-bold.text-cyan-300.mb-2.text-lg');
-                if (analyseTitle && analyseTitle.textContent.includes('Claude')) {
-                    analyseTitle.textContent = 'Analyse IA Groq';
+                // 4. Mettre à jour les compositions
+                if (data.lineups) {
+                    const teams = match.nom.split(' vs ');
+                    updateLineups(data.lineups, teams[0], teams[1] || 'Adversaire');
                 }
                 
             } catch (error) {
@@ -627,37 +636,139 @@
             }
         }
         
-        // Mettre à jour la comparaison avec autres matchs
-        function updateComparison(allMatches, currentMatch) {
-            const comparisonContainer = document.querySelector('.glass.rounded-3xl.p-8');
-            if (!comparisonContainer) return;
+        // Mettre à jour la comparaison avec vrais noms de matchs
+        function updateComparison(comparison, matchName) {
+            // Extraire le match actuel
+            const currentScore = comparison.current_match;
             
-            // Trouver la section de comparaison
-            const comparisonSection = comparisonContainer.querySelector('.space-y-4');
-            if (!comparisonSection) return;
+            // Extraire les autres matchs dynamiquement (format: match_1, match_2, etc.)
+            const otherMatches = [];
+            let i = 1;
+            while (comparison[`match_${i}`] !== undefined) {
+                const matchNameKey = comparison[`match_${i}_name`] || `Match ${i}`;
+                otherMatches.push({
+                    name: matchNameKey,
+                    score: comparison[`match_${i}`]
+                });
+                i++;
+            }
             
-            // Trier les matchs par nombre de vérifications
-            const sortedMatches = [...allMatches].sort((a, b) => (b.nb_checks || 0) - (a.nb_checks || 0));
+            // Si pas de matchs avec format match_X, essayer les anciennes clés (psg_lyon, etc.)
+            if (otherMatches.length === 0) {
+                const comparisonKeys = Object.keys(comparison).filter(k => 
+                    k !== 'current_match' && !k.endsWith('_name')
+                );
+                
+                otherMatches.push(...comparisonKeys.map(key => {
+                    // Utiliser le nom si disponible
+                    const nameKey = `${key}_name`;
+                    if (comparison[nameKey]) {
+                        return {
+                            name: comparison[nameKey],
+                            score: comparison[key]
+                        };
+                    }
+                    
+                    // Sinon convertir "psg_lyon" en "PSG vs Lyon"
+                    const parts = key.split('_');
+                    const home = parts[0].toUpperCase();
+                    const away = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : 'Adversaire';
+                    return {
+                        name: `${home} vs ${away}`,
+                        score: comparison[key]
+                    };
+                }));
+            }
             
-            // Calculer le max pour les pourcentages
-            const maxChecks = Math.max(...sortedMatches.map(m => m.nb_checks || 1), 1);
+            // Construire l'affichage
+            const allComparisons = [
+                { 
+                    name: matchName, 
+                    score: currentScore,
+                    isCurrent: true 
+                },
+                ...otherMatches.map(m => ({
+                    name: m.name,
+                    score: m.score,
+                    isCurrent: false
+                }))
+            ];
             
-            comparisonSection.innerHTML = '';
+            const container = document.querySelector('.comparison-container') || 
+                             document.querySelector('.glass.rounded-3xl.p-8 .space-y-4');
             
-            sortedMatches.forEach(m => {
-                const percentage = Math.round(((m.nb_checks || 0) / maxChecks) * 100);
-                const div = document.createElement('div');
-                div.innerHTML = `
-                    <div class="flex justify-between mb-2">
-                        <span class="font-semibold">${m.nom}</span>
-                        <span class="font-black ${m.nom === currentMatch.nom ? 'text-cyan-400' : ''}">${percentage}%</span>
+            if (container) {
+                container.innerHTML = allComparisons.map((comp, i) => `
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <span class="font-semibold ${comp.isCurrent ? 'text-white' : ''}">${comp.name}</span>
+                            <span class="font-black ${comp.isCurrent ? 'text-cyan-400' : ''}">${comp.score}%</span>
+                        </div>
+                        <div class="h-3 bg-white/5 rounded-full overflow-hidden">
+                            <div class="h-full bg-gradient-to-r from-${comp.isCurrent ? 'cyan' : 'blue'}-500 to-${comp.isCurrent ? 'green' : 'purple'}-500" 
+                                 style="width: ${comp.score}%"></div>
+                        </div>
                     </div>
-                    <div class="h-3 bg-white/5 rounded-full overflow-hidden">
-                        <div class="h-full bg-gradient-to-r from-cyan-500 ${m.nom === currentMatch.nom ? 'to-green-500' : 'to-blue-500'}" style="width: ${percentage}%"></div>
+                `).join('');
+            }
+        }
+        
+        // Mettre à jour la météo
+        function updateWeather(weather) {
+            const emojiEl = document.getElementById('weather-emoji');
+            const tempEl = document.getElementById('weather-temp');
+            const conditionEl = document.getElementById('weather-condition');
+            const rainEl = document.getElementById('weather-rain');
+            const windEl = document.getElementById('weather-wind');
+            
+            if (emojiEl) emojiEl.textContent = weather.emoji;
+            if (tempEl) tempEl.textContent = `${weather.temperature}°C`;
+            if (conditionEl) conditionEl.textContent = weather.condition;
+            if (rainEl) rainEl.textContent = `${weather.rain_chance}%`;
+            if (windEl) windEl.textContent = `${weather.wind_speed} km/h`;
+        }
+        
+        // Mettre à jour les compositions
+        function updateLineups(lineups, homeTeam, awayTeam) {
+            // Mettre à jour la composition PSG
+            const psgLineup = lineups.home;
+            const psgContainer = document.getElementById('lineup-psg');
+            
+            if (psgContainer && psgLineup) {
+                const positions = [
+                    { code: 'GK', players: psgLineup.gk },
+                    { code: 'DF', players: psgLineup.df },
+                    { code: 'MF', players: psgLineup.mf },
+                    { code: 'FW', players: psgLineup.fw }
+                ];
+                
+                psgContainer.innerHTML = positions.map(pos => `
+                    <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                        <span class="font-mono text-gray-400 min-w-[28px]">${pos.code}</span>
+                        <span class="font-semibold leading-relaxed">${pos.players.join(', ')}</span>
                     </div>
-                `;
-                comparisonSection.appendChild(div);
-            });
+                `).join('');
+            }
+            
+            // Mettre à jour la composition adverse
+            const awayLineup = lineups.away;
+            const awayContainer = document.getElementById('lineup-away');
+            
+            if (awayContainer && awayLineup) {
+                const positions = [
+                    { code: 'GK', players: awayLineup.gk },
+                    { code: 'DF', players: awayLineup.df },
+                    { code: 'MF', players: awayLineup.mf },
+                    { code: 'FW', players: awayLineup.fw }
+                ];
+                
+                awayContainer.innerHTML = positions.map(pos => `
+                    <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                        <span class="font-mono text-gray-400 min-w-[28px]">${pos.code}</span>
+                        <span class="font-semibold leading-relaxed">${pos.players.join(', ')}</span>
+                    </div>
+                `).join('');
+            }
         }
         
         // Fonction pour déterminer si c'est le jour du match

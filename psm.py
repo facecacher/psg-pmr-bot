@@ -67,6 +67,130 @@ def charger_matchs():
         log(f"📂 matches.json créé avec {len(matchs_default)} match(s) par défaut", 'info')
         return matchs_default
 
+# ====================
+# FONCTIONS HELPER POUR GROQ
+# ====================
+
+def extract_teams_from_match_name(match_name):
+    """Extrait les équipes depuis le nom du match"""
+    # Format attendu: "PSG vs OM" ou "PSG vs PARIS FC"
+    parts = match_name.split(' vs ')
+    if len(parts) == 2:
+        return {'home': parts[0].strip(), 'away': parts[1].strip()}
+    return {'home': 'PSG', 'away': 'Adversaire'}
+
+def detect_match_importance(home_team, away_team, match_name):
+    """Détecte l'importance du match"""
+    away_lower = away_team.lower()
+    match_lower = match_name.lower()
+    
+    is_classico = 'classique' in match_lower or (home_team == 'PSG' and ('om' in away_lower or 'marseille' in away_lower))
+    is_ol = 'lyon' in away_lower or 'ol' in away_lower
+    is_monaco = 'monaco' in away_lower
+    is_high_profile = is_classico or is_ol or is_monaco
+    
+    return {
+        'is_classico': is_classico,
+        'is_ol': is_ol,
+        'is_monaco': is_monaco,
+        'is_high_profile': is_high_profile,
+        'rivalry': 'Le Classique' if is_classico else ('Grande affiche' if is_ol else ('Match attractif' if is_monaco else 'Match régulier'))
+    }
+
+def get_comparison_matches(match_name, home_team, limit=3):
+    """Récupère les VRAIS autres matchs depuis matches.json pour la comparaison"""
+    try:
+        matches_data = charger_matchs()  # Utiliser la fonction existante
+        
+        # Filtrer les matchs : même équipe à domicile, exclure le match actuel
+        comparison_matches = []
+        for match in matches_data:
+            match_nom = match.get('nom', '')
+            # Vérifier que c'est un match à domicile de la même équipe
+            if home_team in match_nom and match_nom != match_name:
+                # Extraire l'équipe adverse
+                parts = match_nom.split(' vs ')
+                if len(parts) == 2 and parts[0].strip() == home_team:
+                    away_team = parts[1].strip()
+                    comparison_matches.append({
+                        'name': match_nom,
+                        'away_team': away_team,
+                        'url': match.get('url', ''),
+                        'key': f'match_{len(comparison_matches) + 1}'
+                    })
+        
+        # Si pas assez de matchs réels, compléter avec des matchs estimés
+        if len(comparison_matches) < limit:
+            fallback_matches = [
+                {'name': f'{home_team} vs Lyon', 'key': 'match_fallback_1'},
+                {'name': f'{home_team} vs Monaco', 'key': 'match_fallback_2'},
+                {'name': f'{home_team} vs Lens', 'key': 'match_fallback_3'}
+            ]
+            # Exclure ceux qui sont déjà dans comparison_matches
+            for fallback in fallback_matches:
+                if len(comparison_matches) >= limit:
+                    break
+                away_lower = fallback['name'].split(' vs ')[1].lower()
+                if not any(away_lower in m['name'].lower() for m in comparison_matches):
+                    if match_name.lower() not in fallback['name'].lower():
+                        comparison_matches.append(fallback)
+        
+        return comparison_matches[:limit]
+    except Exception as e:
+        log(f"⚠️ Erreur récupération matchs de comparaison: {e}", 'warning')
+        # Fallback avec matchs par défaut
+        return [
+            {'name': f'{home_team} vs Lyon', 'key': 'match_1'},
+            {'name': f'{home_team} vs Monaco', 'key': 'match_2'},
+            {'name': f'{home_team} vs Lens', 'key': 'match_3'}
+        ]
+
+# ====================
+# SYSTÈME DE CACHE GROQ
+# ====================
+GROQ_CACHE_FILE = 'groq_cache.json'
+
+def get_cached_groq_data(match_name):
+    """Récupère les données en cache si elles existent et sont récentes (< 24h)"""
+    try:
+        with open(GROQ_CACHE_FILE, 'r', encoding='utf-8') as f:
+            cache = json.load(f)
+        
+        if match_name in cache:
+            cached_data = cache[match_name]
+            last_updated = datetime.fromisoformat(cached_data.get('last_updated', '2000-01-01'))
+            hours_diff = (datetime.now() - last_updated).total_seconds() / 3600
+            
+            if hours_diff < 24:
+                log(f"✅ Données Groq en cache pour {match_name} ({hours_diff:.1f}h)", 'info')
+                return cached_data
+            else:
+                log(f"⏰ Cache expiré pour {match_name} ({hours_diff:.1f}h)", 'info')
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        log(f"⚠️ Erreur lecture cache: {e}", 'warning')
+    
+    return None
+
+def save_groq_cache(match_name, data):
+    """Sauvegarde les données dans le cache"""
+    try:
+        cache = {}
+        if os.path.exists(GROQ_CACHE_FILE):
+            with open(GROQ_CACHE_FILE, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+        
+        cache[match_name] = data
+        cache[match_name]['last_updated'] = datetime.now().isoformat()
+        
+        with open(GROQ_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+        
+        log(f"💾 Cache Groq sauvegardé pour {match_name}", 'info')
+    except Exception as e:
+        log(f"⚠️ Erreur sauvegarde cache: {e}", 'warning')
+
 # ✅ LISTE DES MATCHS À SURVEILLER (chargée dynamiquement)
 MATCHS = charger_matchs()
 
@@ -680,11 +804,16 @@ def api_get_logs():
 
 @app.route('/api/groq/analyze', methods=['GET'])
 def api_groq_analyze():
-    """Génère une analyse IA du match avec Groq"""
+    """Génère une analyse IA complète du match avec Groq (analysis, comparison, weather, lineups)"""
     try:
         match_name = request.args.get('match')
         if not match_name:
             return jsonify({"error": "Paramètre 'match' requis"}), 400
+        
+        # Vérifier le cache d'abord
+        cached_data = get_cached_groq_data(match_name)
+        if cached_data:
+            return jsonify(cached_data)
         
         # Charger les données du match depuis status.json
         try:
@@ -697,34 +826,146 @@ def api_groq_analyze():
         if not match:
             return jsonify({"error": "Match non trouvé"}), 404
         
-        # Charger tous les matchs pour la comparaison
-        all_matches = status.get('matchs', [])
+        # Extraire les équipes
+        teams = extract_teams_from_match_name(match_name)
+        home_team = teams['home']
+        away_team = teams['away']
         
-        # Construire le prompt pour Groq
-        prompt = f"""Tu es un expert en analyse de billetterie pour les matchs de football. 
-
-Analyse ce match : {match_name}
-
-Statistiques du match :
-- Nombre de vérifications : {match.get('nb_checks', 0)}
-- Dernière vérification : {match.get('dernier_check', 'Jamais')}
-- Places PMR disponibles : {'Oui' if match.get('pmr_disponible', False) else 'Non'}
-
-Comparaison avec les autres matchs surveillés :
-{chr(10).join([f"- {m['nom']}: {m.get('nb_checks', 0)} vérifications, PMR: {'Oui' if m.get('pmr_disponible', False) else 'Non'}" for m in all_matches])}
-
-Génère une analyse courte (3-4 phrases maximum) qui :
-1. Évalue le niveau d'intérêt/anticipation pour ce match (en pourcentage)
-2. Donne une probabilité de disponibilité de places PMR basée sur l'historique
-3. Fait une recommandation pratique
-
-Réponds UNIQUEMENT avec un JSON contenant :
-- "hype_level": un nombre entre 0 et 100
-- "hype_label": un label court (ex: "Très élevé", "Élevé", "Moyen", "Faible")
-- "affluence_prevue": un nombre entre 0 et 100
-- "probabilite_disponibilite": un nombre entre 0 et 100
-- "analyse": le texte d'analyse (3-4 phrases)
+        # Détecter l'importance
+        importance = detect_match_importance(home_team, away_team, match_name)
+        
+        # Récupérer les VRAIS matchs de comparaison depuis matches.json
+        comparison_matches = get_comparison_matches(match_name, home_team, limit=3)
+        
+        # Date du match (utiliser date actuelle)
+        match_date = datetime.now()
+        date_formatted = match_date.strftime("%d %B %Y")
+        
+        # Construire la section comparaison
+        if comparison_matches:
+            comparison_section = f"""
+2. COMPARAISON AVEC AUTRES MATCHS DE {home_team}:
+   
+   Analyse ET compare "{match_name}" avec ces matchs RÉELS du calendrier :
+   
+   {chr(10).join([f'   {i+1}. {m["name"]}' for i, m in enumerate(comparison_matches)])}
+   
+   Pour CHAQUE match ci-dessus, analyse son importance et donne un score d'anticipation (0-100).
+   Règles:
+   - {home_team}-OM (Le Classique) = toujours le plus haut (90-100)
+   - {home_team}-Lyon = très attractif (80-92)
+   - {home_team}-Monaco = attractif (75-88)
+   - Autres équipes = variable selon classement (60-80)
+   
+   Compare "{match_name}" avec ces matchs et classe-les par importance.
+   Retourne les scores pour:
+   - current_match: score de "{match_name}"
+   {chr(10).join([f'   - {m["key"]}: score de "{m["name"]}"' for m in comparison_matches])}
 """
+        else:
+            comparison_section = f"""
+2. COMPARAISON AVEC AUTRES MATCHS:
+   Génère des scores estimés pour 3 autres matchs importants de {home_team}:
+   - match_1: {home_team} vs Lyon (grand rival)
+   - match_2: {home_team} vs Monaco (affiche attractive)
+   - match_3: {home_team} vs Lens (match moyen)
+"""
+        
+        # Construire le prompt complet
+        prompt = f"""Tu es un expert en football français, météorologie et analyse de données sportives.
+
+MATCH À ANALYSER:
+- Équipes: {match_name}
+- Compétition: Ligue 1
+- Date: {date_formatted}
+- Stade: Parc des Princes
+- Contexte: {importance['rivalry']}
+- Importance: {'Match à très forte affluence' if importance['is_high_profile'] else 'Match d\'importance moyenne'}
+
+CONSIGNES D'ANALYSE:
+
+1. ANALYSE D'ANTICIPATION:
+   Analyse le niveau d'attente pour ce match spécifique "{match_name}".
+   {'Le Classique PSG-OM génère toujours une demande exceptionnelle (90-100%).' if importance['is_classico'] else ''}
+   {'PSG-OL est une affiche majeure de Ligue 1 (80-95%).' if importance['is_ol'] else ''}
+   {'PSG-Monaco est un match attractif (75-90%).' if importance['is_monaco'] else ''}
+   {'Pour un match moins médiatisé, ajuste les scores en conséquence (60-85%).' if not importance['is_high_profile'] else ''}
+   
+   - hype_score: niveau d'anticipation supporters (0-100)
+   - affluence_prevue: taux de remplissage estimé (0-100, base Parc des Princes = 90%+ pour gros matchs)
+   - probabilite_pmr: chance qu'une place PMR se libère (0-100, faible pour gros matchs)
+   - analyse: explication courte (2-3 phrases) adaptée à CE match précis
+
+{comparison_section}
+
+3. MÉTÉO PRÉVUE:
+   Pour Parc des Princes le {date_formatted}:
+   - Utilise des données météo réalistes pour Paris/France à cette période
+   - En janvier: généralement 5-10°C, souvent nuageux, risque de pluie moyen
+   - En été: 20-30°C, plutôt ensoleillé
+   - Adapte selon la saison réelle
+   
+   - temperature: température en °C (cohérente avec la date)
+   - condition: description ("Ensoleillé", "Nuageux", "Partiellement nuageux", "Pluvieux", etc.)
+   - rain_chance: probabilité de pluie (0-100)
+   - wind_speed: vitesse vent en km/h (10-20 km/h typique)
+   - emoji: emoji météo approprié (☀️, 🌤️, ⛅, 🌧️, ⛈️, etc.)
+
+4. COMPOSITIONS PROBABLES:
+   Génère les compositions RÉALISTES et ACTUELLES (saison 2024-2025):
+   
+   Pour {home_team}:
+   {'- Utilise les vrais joueurs du PSG actuel: Donnarumma (GK), Hakimi, Marquinhos (C), Skriniar, Mendes (DF), Vitinha, Zaïre-Emery, Ugarte (MF), Dembélé, Ramos, Barcola (FW)' if home_team == 'PSG' else f'- Utilise les vrais joueurs actuels de {home_team}'}
+   - Formation: 4-3-3 (typique)
+   
+   Pour {away_team}:
+   {'- Utilise les vrais joueurs de l\'OM actuel: López (GK), Clauss, Gigot, Balerdi, Tavares (DF), Rongier, Veretout, Harit (MF), Aubameyang, Greenwood, Moumbagna (FW)' if 'OM' in away_team or 'Marseille' in away_team else f'- Utilise les vrais joueurs actuels de {away_team}'}
+   - Formation: 4-3-3
+
+IMPORTANT:
+- Adapte TOUS les scores et analyses au match spécifique "{match_name}"
+- Ne copie pas les valeurs d'un autre match
+- Sois cohérent: PSG-OM > PSG-OL > PSG-Monaco > PSG-équipe moyenne
+- Utilise les vrais effectifs 2024-2025
+- Météo réaliste pour {date_formatted}
+
+Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
+{{
+  "analysis": {{
+    "hype_score": number,
+    "affluence_prevue": number,
+    "probabilite_pmr": number,
+    "analyse": "string adaptée à {match_name}"
+  }},
+  "comparison": {{
+    "current_match": number,
+    {chr(10).join([f'    "{m["key"]}": number,' for m in comparison_matches]) if comparison_matches else '    "match_1": number,\n    "match_2": number,\n    "match_3": number,'}
+    {chr(10).join([f'    "{m["key"]}_name": "{m["name"]}",' for m in comparison_matches]) if comparison_matches else ''}
+  }},
+  "weather": {{
+    "temperature": number,
+    "condition": "string",
+    "rain_chance": number,
+    "wind_speed": number,
+    "emoji": "string"
+  }},
+  "lineups": {{
+    "home": {{
+      "formation": "string",
+      "gk": ["string"],
+      "df": ["string", "string", "string", "string"],
+      "mf": ["string", "string", "string"],
+      "fw": ["string", "string", "string"]
+    }},
+    "away": {{
+      "formation": "string",
+      "gk": ["string"],
+      "df": ["string", "string", "string", "string"],
+      "mf": ["string", "string", "string"],
+      "fw": ["string", "string", "string"]
+    }}
+  }}
+}}"""
 
         # Clé API Groq (doit être définie dans les variables d'environnement)
         GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -745,18 +986,19 @@ Réponds UNIQUEMENT avec un JSON contenant :
             "messages": [
                 {
                     "role": "system",
-                    "content": "Tu es un expert en analyse de billetterie. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans code blocks."
+                    "content": "Tu es un expert en football français, météorologie et analyse de données sportives. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans code blocks."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            "temperature": 0.7,
-            "max_tokens": 500
+            "temperature": 0.4,
+            "max_tokens": 1500,
+            "top_p": 0.9
         }
         
-        response = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=10)
+        response = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=30)
         
         if response.status_code != 200:
             log(f"❌ Erreur API Groq: {response.status_code}", 'error')
@@ -777,18 +1019,77 @@ Réponds UNIQUEMENT avec un JSON contenant :
                 content = content[:-3]
             content = content.strip()
             
-            analysis = json.loads(content)
-            return jsonify(analysis)
-        except json.JSONDecodeError:
-            # Si le parsing échoue, retourner une analyse par défaut
-            log(f"⚠️ Réponse Groq non-JSON, utilisation de valeurs par défaut", 'warning')
-            return jsonify({
-                "hype_level": 75,
-                "hype_label": "Élevé",
-                "affluence_prevue": 85,
-                "probabilite_disponibilite": 15,
-                "analyse": f"Le match {match_name} a été vérifié {match.get('nb_checks', 0)} fois. Basé sur l'historique, la probabilité de disponibilité de places PMR est modérée. Recommandation : activer les alertes Telegram pour ne pas manquer une opportunité."
-            })
+            # Extraire le JSON
+            json_match = None
+            if '{' in content:
+                start = content.find('{')
+                end = content.rfind('}') + 1
+                json_match = content[start:end]
+            
+            if not json_match:
+                raise ValueError("Aucun JSON trouvé dans la réponse")
+            
+            complete_data = json.loads(json_match)
+            
+            # Vérifier que toutes les sections sont présentes
+            if not all(key in complete_data for key in ['analysis', 'comparison', 'weather', 'lineups']):
+                raise ValueError("Données incomplètes dans la réponse Groq")
+            
+            # Ajouter timestamp
+            complete_data['last_updated'] = datetime.now().isoformat()
+            
+            # Sauvegarder dans le cache
+            save_groq_cache(match_name, complete_data)
+            
+            return jsonify(complete_data)
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            # Si le parsing échoue, retourner des données par défaut
+            log(f"⚠️ Réponse Groq invalide, utilisation de valeurs par défaut: {e}", 'warning')
+            default_data = {
+                "analysis": {
+                    "hype_score": 75,
+                    "affluence_prevue": 85,
+                    "probabilite_pmr": 15,
+                    "analyse": f"Le match {match_name} a été vérifié {match.get('nb_checks', 0)} fois. Basé sur l'historique, la probabilité de disponibilité de places PMR est modérée. Recommandation : activer les alertes Telegram pour ne pas manquer une opportunité."
+                },
+                "comparison": {
+                    "current_match": 75,
+                    "match_1": 70,
+                    "match_1_name": comparison_matches[0]['name'] if comparison_matches else f"{home_team} vs Lyon",
+                    "match_2": 65,
+                    "match_2_name": comparison_matches[1]['name'] if len(comparison_matches) > 1 else f"{home_team} vs Monaco",
+                    "match_3": 60,
+                    "match_3_name": comparison_matches[2]['name'] if len(comparison_matches) > 2 else f"{home_team} vs Lens"
+                },
+                "weather": {
+                    "temperature": 12,
+                    "condition": "Variable",
+                    "rain_chance": 30,
+                    "wind_speed": 15,
+                    "emoji": "🌤️"
+                },
+                "lineups": {
+                    "home": {
+                        "formation": "4-3-3",
+                        "gk": ["Gardien"],
+                        "df": ["DF1", "DF2", "DF3", "DF4"],
+                        "mf": ["MF1", "MF2", "MF3"],
+                        "fw": ["FW1", "FW2", "FW3"]
+                    },
+                    "away": {
+                        "formation": "4-3-3",
+                        "gk": ["Gardien"],
+                        "df": ["DF1", "DF2", "DF3", "DF4"],
+                        "mf": ["MF1", "MF2", "MF3"],
+                        "fw": ["FW1", "FW2", "FW3"]
+                    }
+                },
+                "last_updated": datetime.now().isoformat(),
+                "error": True
+            }
+            save_groq_cache(match_name, default_data)
+            return jsonify(default_data)
             
     except Exception as e:
         log(f"❌ Erreur analyse Groq: {e}", 'error')
