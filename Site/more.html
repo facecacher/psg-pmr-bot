@@ -456,18 +456,31 @@
         // Charger les données du match
         async function chargerDonneesMatch(reloadGroq = true) {
             try {
+                console.log('🔄 Chargement des données pour:', matchName);
+                console.log('📡 URL:', `${BOT_URL}/status.json`);
+                
                 const response = await fetch(`${BOT_URL}/status.json`);
+                
+                if (!response.ok) {
+                    console.error('❌ Erreur HTTP:', response.status, response.statusText);
+                    return;
+                }
+                
                 const data = await response.json();
+                console.log('✅ Données reçues:', data);
                 
                 // Trouver le match correspondant
                 const match = data.matchs.find(m => m.nom === matchName);
                 
                 if (!match) {
+                    console.error('❌ Match non trouvé:', matchName);
+                    console.log('📋 Matchs disponibles:', data.matchs.map(m => m.nom));
                     // Match non trouvé, rediriger
                     window.location.href = 'index.html';
                     return;
                 }
                 
+                console.log('✅ Match trouvé:', match);
                 currentMatch = match;
                 
                 // Mettre à jour le titre
@@ -761,11 +774,20 @@
         }
         
         // Charger au démarrage
+        console.log('🚀 Initialisation de more.html');
+        console.log('📝 Match recherché:', matchName);
+        
         chargerDonneesMatch().then(() => {
             if (currentMatch) {
+                console.log('📊 Mise à jour du graphique');
                 updateChart(currentMatch);
+                console.log('🤖 Démarrage de l\'analyse Groq');
                 gererAnalyseGroq(currentMatch);
+            } else {
+                console.error('❌ Aucun match chargé');
             }
+        }).catch(error => {
+            console.error('❌ Erreur lors du chargement initial:', error);
         });
         
         // Recharger les données toutes les 10 secondes (sans l'analyse Groq)
