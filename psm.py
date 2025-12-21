@@ -294,11 +294,21 @@ def api_add_match():
     """Ajoute un nouveau match à surveiller"""
     try:
         data = request.json
-        nom = data.get('nom')
-        url = data.get('url')
+        nom = data.get('nom', '').strip()
+        url = data.get('url', '').strip()
         
+        # Validation
         if not nom or not url:
             return jsonify({"error": "Nom et URL requis"}), 400
+        
+        # Validation de l'URL
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            if not parsed.scheme or not parsed.netloc:
+                return jsonify({"error": "URL invalide. Veuillez entrer une URL complète (ex: https://...)"}), 400
+        except Exception:
+            return jsonify({"error": "URL invalide"}), 400
         
         # Lire les matchs existants
         try:
@@ -306,6 +316,13 @@ def api_add_match():
                 matches = json.load(f)
         except FileNotFoundError:
             matches = []
+        
+        # Vérifier si le match existe déjà
+        for match in matches:
+            if match.get('nom') == nom:
+                return jsonify({"error": f"Un match avec le nom '{nom}' existe déjà"}), 409
+            if match.get('url') == url:
+                return jsonify({"error": f"Un match avec cette URL existe déjà"}), 409
         
         # Ajouter le nouveau match
         new_match = {"nom": nom, "url": url}
@@ -315,8 +332,13 @@ def api_add_match():
         with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
             json.dump(matches, f, ensure_ascii=False, indent=2)
         
+        print(f"✅ Match ajouté: {nom} ({url})")
+        
         return jsonify({"success": True, "match": new_match}), 201
     except Exception as e:
+        print(f"❌ Erreur ajout match: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/matches/<int:index>', methods=['DELETE'])
