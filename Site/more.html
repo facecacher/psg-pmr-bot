@@ -484,7 +484,8 @@
                 // Mettre à jour le statut PMR
                 const pmrCard = document.querySelector('.glass.rounded-2xl.p-6');
                 if (pmrCard) {
-                    const pmrStatus = pmrCard.querySelector('.text-3xl.font-black');
+                    // Chercher le statut PMR (peut avoir plusieurs classes)
+                    const pmrStatus = pmrCard.querySelector('.text-3xl');
                     const pmrIcon = pmrCard.querySelector('.text-5xl');
                     const borderEl = pmrCard.querySelector('.border-l-4');
                     
@@ -495,8 +496,8 @@
                         }
                         if (pmrIcon) pmrIcon.textContent = '✅';
                         if (borderEl) {
-                            borderEl.classList.remove('border-red-500');
-                            borderEl.classList.add('border-green-500');
+                            borderEl.classList.remove('border-red-500', 'border-red-500/50');
+                            borderEl.classList.add('border-green-500', 'border-green-500/50');
                         }
                     } else {
                         if (pmrStatus) {
@@ -505,8 +506,8 @@
                         }
                         if (pmrIcon) pmrIcon.textContent = '❌';
                         if (borderEl) {
-                            borderEl.classList.remove('border-green-500');
-                            borderEl.classList.add('border-red-500');
+                            borderEl.classList.remove('border-green-500', 'border-green-500/50');
+                            borderEl.classList.add('border-red-500', 'border-red-500/50');
                         }
                     }
                     
@@ -563,26 +564,32 @@
                     return;
                 }
                 
-                // Mettre à jour le hype level
-                const hypeLevel = document.querySelector('.text-7xl.font-black.gradient-text');
+                // Mettre à jour le hype level (dans la section IA)
+                const hypeLevel = document.querySelector('.text-7xl.gradient-text');
                 if (hypeLevel) {
                     hypeLevel.textContent = `${analysis.hype_level}%`;
                 }
                 
-                // Mettre à jour le label hype
-                const hypeLabel = document.querySelectorAll('.stat-card')[1]?.querySelector('.text-2xl.font-bold.mb-1');
-                if (hypeLabel) {
-                    hypeLabel.textContent = analysis.hype_label;
+                // Mettre à jour le label hype (dans la card avec l'emoji 🔥)
+                const statCards = document.querySelectorAll('.stat-card.p-6.rounded-2xl');
+                if (statCards.length >= 2) {
+                    const hypeLabelCard = statCards[1];
+                    const hypeLabel = hypeLabelCard.querySelector('.text-2xl.font-bold');
+                    if (hypeLabel) {
+                        hypeLabel.textContent = analysis.hype_label;
+                    }
                 }
                 
-                // Mettre à jour l'affluence prévue
-                const affluenceCard = document.querySelectorAll('.stat-card')[2];
-                if (affluenceCard) {
-                    const affluenceEl = affluenceCard.querySelector('.text-2xl');
-                    if (affluenceEl) affluenceEl.textContent = `${analysis.affluence_prevue}%`;
+                // Mettre à jour l'affluence prévue (dans la card avec l'emoji 👥)
+                if (statCards.length >= 3) {
+                    const affluenceCard = statCards[2];
+                    const affluenceEl = affluenceCard.querySelector('.text-2xl.font-bold');
+                    if (affluenceEl) {
+                        affluenceEl.textContent = `${analysis.affluence_prevue}%`;
+                    }
                 }
                 
-                // Mettre à jour l'analyse
+                // Mettre à jour l'analyse textuelle
                 const analyseText = document.querySelector('.text-gray-300.leading-relaxed');
                 if (analyseText) {
                     let analyseHTML = analysis.analyse;
@@ -594,6 +601,12 @@
                         );
                     }
                     analyseText.innerHTML = analyseHTML;
+                }
+                
+                // Mettre à jour le titre de l'analyse (remplacer "Analyse IA Claude" par "Analyse IA Groq")
+                const analyseTitle = document.querySelector('.font-bold.text-cyan-300.mb-2.text-lg');
+                if (analyseTitle && analyseTitle.textContent.includes('Claude')) {
+                    analyseTitle.textContent = 'Analyse IA Groq';
                 }
                 
             } catch (error) {
