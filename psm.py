@@ -8,6 +8,8 @@ import os
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import locale
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 # Configuration Playwright pour Docker
 os.environ['PLAYWRIGHT_BROWSERS_PATH'] = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '/root/.cache/ms-playwright')

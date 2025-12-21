@@ -597,14 +597,17 @@
     </script>
     
     <script>
+        // URL de l'API (Dokploy)
+        const API_URL = 'https://app.lesbricolesdelekmane.fun/api';
+        
         // Tracker les visiteurs
-        fetch('http://localhost:5000/api/analytics/visitor', {
+        fetch(`${API_URL}/analytics/visitor`, {
             method: 'POST'
         }).catch(() => {});
         
         // Tracker le clic sur le bouton Telegram
         document.querySelector('a[href*="t.me"]')?.addEventListener('click', () => {
-            fetch('http://localhost:5000/api/analytics/telegram-click', {
+            fetch(`${API_URL}/analytics/telegram-click`, {
                 method: 'POST'
             }).catch(() => {});
         });

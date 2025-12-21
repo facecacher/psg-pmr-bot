@@ -45,6 +45,6 @@ COPY Site/ ./Site/
 ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
 
-EXPOSE 8081
+EXPOSE 8081 5000
 
 CMD ["python", "-u", "psm.py"]
