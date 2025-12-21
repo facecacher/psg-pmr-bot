@@ -42,20 +42,20 @@ def verifier_match(match):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=True,  # Mode invisible, fonctionne sans écran
+                headless=True,
                 args=[
-                    '--no-sandbox',  # Permissions Docker
+                    '--no-sandbox',
                     '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',  # Évite les problèmes de mémoire
-                    '--disable-gpu',  # Pas de carte graphique nécessaire
-                    '--window-size=1920x1080'
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--window-size=1920x1080',
+                    '--disable-blink-features=AutomationControlled'
                 ]
             )
             
-            # Ajouter un contexte pour éviter la détection
             context = browser.new_context(
                 viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
             
             page = context.new_page()  # Au lieu de browser.new_page()
@@ -64,8 +64,10 @@ def verifier_match(match):
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(4000)
 
-            page.mouse.wheel(0, 3000)
-            page.wait_for_timeout(2000)
+            # Scroll progressif au lieu d'un scroll brutal
+            for i in range(3):
+                page.mouse.wheel(0, 1000)
+                page.wait_for_timeout(1000)
 
             heure = datetime.now().strftime("%H:%M:%S")
 
