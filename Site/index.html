@@ -514,10 +514,13 @@
             }, i * 100 + 200);
         });
 
+        // URL du bot Dokploy (à remplacer par votre URL Dokploy)
+        const BOT_URL = 'https://VOTRE-URL-DOKPLOY.com'; // Exemple: https://psm-bot.dokploy.com
+        
         // Charger les données du bot
         async function chargerStatus() {
             try {
-                const response = await fetch('status.json');
+                const response = await fetch(`${BOT_URL}/status.json`);
                 const data = await response.json();
                 
                 // Mettre à jour les cards de matchs
