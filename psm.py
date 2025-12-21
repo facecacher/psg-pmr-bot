@@ -88,7 +88,7 @@ def sauvegarder_status():
     # Calculer le taux de disponibilité (pourcentage de fois où PMR était disponible)
     nb_matchs = len(MATCHS)
     if nb_matchs > 0:
-        matchs_avec_pmr = sum(1 for nom in MATCHS if pmr_disponible_par_match.get(nom, False))
+        matchs_avec_pmr = sum(1 for match in MATCHS if pmr_disponible_par_match.get(match["nom"], False))
         taux_disponibilite = round((matchs_avec_pmr / nb_matchs) * 100, 1)
     else:
         taux_disponibilite = 0.0
