@@ -56,7 +56,8 @@ Le code est disponible sur : `https://github.com/facecacher/psg-pmr-bot`
 #### 3. Configuration de l'application
 - **Build Type** : Sélectionnez **"Docker"** ou **"Dockerfile"**
   - Dokploy devrait détecter automatiquement le Dockerfile
-- **Port** : Laissez vide (le bot ne sert pas de site web, il génère juste `status.json`)
+- **Port** : Configurez le port **`8080`**
+  - Le bot sert maintenant le site web (`index.html`) et `status.json` sur ce port
 
 #### 4. ⚠️ IMPORTANT : Configurer les variables d'environnement
 Dans la section **"Environment Settings"** (PAS "Build-time Arguments" ni "Build-time Secrets"), ajoutez :
@@ -82,11 +83,18 @@ Dans la section **"Environment Settings"** (PAS "Build-time Arguments" ni "Build
 - Allez dans l'onglet **"Logs"** ou **"Runtime Logs"**
 - Vous devriez voir :
   ```
-  🚀 Bot PSM démarré!
+  🌐 Serveur web démarré sur le port 8080
+  📱 Site accessible sur http://localhost:8080/index.html
+  🚀 Bot PSM démarré avec serveur web intégré!
   PSG vs PARIS FC → PMR trouvées : 0
   ⏳ Pause 92 secondes...
   ```
 - Le bot vérifie les matchs toutes les ~90 secondes
+
+#### 7. Accéder au site web
+- Une fois déployé, Dokploy vous donnera une URL publique
+- Accédez à votre site via cette URL (ex: `https://votre-app.dokploy.com`)
+- Le site affiche les données en temps réel et se met à jour toutes les 10 secondes
 
 ### 📱 Messages Telegram configurés
 
@@ -123,11 +131,16 @@ Le bot envoie automatiquement des messages Telegram avec le format suivant :
 
 ## Interface web
 
-Le fichier `Site/index.html` lit automatiquement `status.json` toutes les 10 secondes pour afficher les données en temps réel.
+Le bot inclut maintenant un **serveur web intégré** qui :
+- ✅ Sert `Site/index.html` sur le port 8080
+- ✅ Sert `status.json` pour les données en temps réel
+- ✅ Met à jour automatiquement toutes les 10 secondes
+- ✅ Fonctionne directement sur Dokploy
 
-Pour servir le site web, vous pouvez :
-- Héberger `Site/index.html` sur un service gratuit (Netlify, Vercel, GitHub Pages)
-- Ou ajouter un serveur web simple dans `psm.py`
+**Accès au site :**
+- Une fois déployé sur Dokploy, utilisez l'URL publique fournie
+- Le site est accessible directement via cette URL
+- Les données se mettent à jour automatiquement toutes les 10 secondes
 
 Le bot utilise le mode headless avec les arguments nécessaires pour fonctionner dans un container Docker.
 

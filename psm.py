@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import random
 import json
 import os
+import threading
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 # ✅ LISTE DES MATCHS À SURVEILLER
 MATCHS = [
@@ -146,7 +148,39 @@ def verifier_match(match):
 # Créer le fichier status.json initial
 sauvegarder_status()
 
-print("🚀 Bot PSM démarré!")
+# Démarrer le serveur web dans un thread séparé
+def start_web_server():
+    """Serveur web simple pour servir index.html et status.json"""
+    port = 8080
+    
+    class CustomHandler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory='Site', **kwargs)
+        
+        def end_headers(self):
+            # Ajouter les headers CORS pour permettre l'accès depuis n'importe où
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', '*')
+            super().end_headers()
+        
+        def do_GET(self):
+            # Si on demande status.json, le servir depuis la racine
+            if self.path == '/status.json':
+                self.path = '/../status.json'
+                return super().do_GET()
+            # Sinon, servir depuis le dossier Site
+            return super().do_GET()
+    
+    server = HTTPServer(('0.0.0.0', port), CustomHandler)
+    print(f"🌐 Serveur web démarré sur le port {port}")
+    print(f"📱 Site accessible sur http://localhost:{port}/index.html")
+    server.serve_forever()
+
+# Lancer le serveur web en arrière-plan
+threading.Thread(target=start_web_server, daemon=True).start()
+
+print("🚀 Bot PSM démarré avec serveur web intégré!")
 
 # ✅ BOUCLE PRINCIPALE MULTI-MATCHS
 while True:
