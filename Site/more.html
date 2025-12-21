@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Match Detail - PMR Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800;900&display=swap');
+        
+        * {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        
+        body {
+            background: #000000;
+            color: #ffffff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .grain {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='3.5' numOctaves='4' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' /%3E%3C/svg%3E");
+            z-index: 1;
+        }
+        
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .orb-1 {
+            top: 0;
+            right: 0;
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(0,26,61,0.6) 0%, transparent 70%);
+        }
+        
+        .orb-2 {
+            bottom: 0;
+            left: 0;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(0,212,255,0.2) 0%, transparent 70%);
+        }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            transition: all 0.3s ease;
+        }
+        
+        .glass:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(0, 212, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #ffffff 0%, #00d4ff 50%, #00ff88 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, rgba(0,26,61,0.4) 0%, rgba(0,65,112,0.2) 100%);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .pulse { animation: pulse 2s ease-in-out infinite; }
+        .slide-in { animation: slideIn 0.6s ease-out forwards; }
+        
+        .stat-card {
+            background: linear-gradient(135deg, rgba(0,212,255,0.1) 0%, rgba(0,255,136,0.05) 100%);
+            border: 1px solid rgba(0,212,255,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="grain"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    
+    <div class="relative z-10 max-w-[1600px] mx-auto px-4 sm:px-6 py-8">
+        <!-- Back button -->
+        <button onclick="window.history.back()" class="glass px-4 py-2 rounded-lg flex items-center gap-2 mb-8 hover:scale-105 transition-transform">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            <span>Retour</span>
+        </button>
+
+        <!-- HEADER STYLE DASHBOARD -->
+        <div class="mb-10 slide-in">
+            <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center gap-3">
+                    <span class="glass px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">Ligue 1</span>
+                    <span class="glass px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider text-red-400 border-red-500/30">Le Classique</span>
+                </div>
+                <div class="flex items-center gap-2 pulse">
+                    <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                    <span class="text-xs text-green-400 font-semibold uppercase tracking-wider">Live</span>
+                </div>
+            </div>
+            
+            <div class="grid lg:grid-cols-12 gap-6 items-center">
+                <!-- Titre -->
+                <div class="lg:col-span-7">
+                    <h1 class="text-5xl lg:text-7xl font-black mb-6 leading-tight">
+                        <span class="gradient-text">PSG</span>
+                        <span class="text-gray-600 mx-3">vs</span>
+                        <span class="gradient-text">OM</span>
+                    </h1>
+                    <div class="flex flex-wrap items-center gap-4 text-sm text-gray-400">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            <span>Dimanche 15 Janvier 2025</span>
+                        </div>
+                        <span class="text-gray-700">•</span>
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span>21:00</span>
+                        </div>
+                        <span class="text-gray-700">•</span>
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                            </svg>
+                            <span>Parc des Princes</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Status PMR Card -->
+                <div class="lg:col-span-5">
+                    <div class="glass rounded-2xl p-6 border-l-4 border-red-500/50">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Places PMR</div>
+                                <div class="text-3xl font-black text-red-400 mb-1">Aucune</div>
+                                <div class="text-xs text-gray-500">Dernière vérif: il y a 3 min</div>
+                            </div>
+                            <div class="text-5xl">❌</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GRID PRINCIPALE -->
+        <div class="grid lg:grid-cols-12 gap-6">
+            <!-- COLONNE GAUCHE - 8 cols -->
+            <div class="lg:col-span-8 space-y-6">
+                
+                <!-- Indice IA -->
+                <div class="glass rounded-3xl p-8 slide-in" style="animation-delay: 0.1s">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h2 class="text-3xl font-black mb-2">Indice d'anticipation</h2>
+                            <p class="text-sm text-gray-400 uppercase tracking-wider">Analyse IA temps réel</p>
+                        </div>
+                        <span class="stat-card px-4 py-2 rounded-xl text-sm font-bold uppercase tracking-wider">IA</span>
+                    </div>
+                    
+                    <div class="grid sm:grid-cols-3 gap-6 mb-8">
+                        <div class="text-center">
+                            <div class="text-7xl font-black gradient-text mb-2">94%</div>
+                            <div class="text-sm text-gray-400 uppercase tracking-wider">Hype Level</div>
+                        </div>
+                        <div class="stat-card p-6 rounded-2xl text-center">
+                            <div class="text-4xl mb-2">🔥</div>
+                            <div class="text-2xl font-bold mb-1">Très élevé</div>
+                            <div class="text-xs text-gray-400">Hype social</div>
+                        </div>
+                        <div class="stat-card p-6 rounded-2xl text-center">
+                            <div class="text-4xl mb-2">👥</div>
+                            <div class="text-2xl font-bold mb-1">98%</div>
+                            <div class="text-xs text-gray-400">Affluence prévue</div>
+                        </div>
+                    </div>
+                    
+                    <div class="gradient-bg border border-cyan-500/20 rounded-2xl p-6">
+                        <div class="flex items-start gap-4">
+                            <div class="text-4xl">🤖</div>
+                            <div>
+                                <div class="font-bold text-cyan-300 mb-2 text-lg">Analyse IA Claude</div>
+                                <p class="text-gray-300 leading-relaxed">
+                                    Le Classique PSG-OM est l'affiche la plus attendue de Ligue 1. Avec un taux d'anticipation de 94% et une affluence prévue de 98%, la demande est exceptionnelle. Historique : seulement 3 places PMR libérées sur les 6 derniers Classiques. <span class="text-white font-semibold">Probabilité de disponibilité : 12%</span>. Recommandation : activer alertes Telegram.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Graphique -->
+                <div class="glass rounded-3xl p-8 slide-in" style="animation-delay: 0.2s">
+                    <h2 class="text-2xl font-black mb-6">Historique des vérifications</h2>
+                    <div class="w-full" style="height: 300px;">
+                        <canvas id="checkChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Comparaison matchs -->
+                <div class="glass rounded-3xl p-8 slide-in" style="animation-delay: 0.3s">
+                    <h2 class="text-2xl font-black mb-6">Comparaison avec autres matchs</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between mb-2">
+                                <span class="font-semibold">PSG vs OM</span>
+                                <span class="font-black text-cyan-400">94%</span>
+                            </div>
+                            <div class="h-3 bg-white/5 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-cyan-500 to-green-500" style="width: 94%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-2">
+                                <span class="font-semibold">PSG vs Lyon</span>
+                                <span class="font-black">82%</span>
+                            </div>
+                            <div class="h-3 bg-white/5 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-cyan-500 to-blue-500" style="width: 82%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-2">
+                                <span class="font-semibold">PSG vs Monaco</span>
+                                <span class="font-black">76%</span>
+                            </div>
+                            <div class="h-3 bg-white/5 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width: 76%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-2">
+                                <span class="font-semibold">PSG vs Lens</span>
+                                <span class="font-black">61%</span>
+                            </div>
+                            <div class="h-3 bg-white/5 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-purple-500 to-pink-500" style="width: 61%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Historique détections -->
+                <div class="glass rounded-3xl p-8 slide-in" style="animation-delay: 0.4s">
+                    <h2 class="text-2xl font-black mb-6">Historique des détections</h2>
+                    <div class="space-y-3">
+                        <div class="glass p-5 rounded-xl border-l-4 border-green-400">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-2xl">✅</span>
+                                    <div>
+                                        <div class="font-bold">Place PMR détectée</div>
+                                        <div class="text-sm text-gray-400">Catégorie 3 - Tribune Auteuil</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-semibold">12/01/2025</div>
+                                    <div class="text-xs text-gray-400">14:32</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="glass p-5 rounded-xl border-l-4 border-green-400">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-2xl">✅</span>
+                                    <div>
+                                        <div class="font-bold">Place PMR détectée</div>
+                                        <div class="text-sm text-gray-400">Catégorie 2 - Tribune Boulogne</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-semibold">10/01/2025</div>
+                                    <div class="text-xs text-gray-400">09:15</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="glass p-5 rounded-xl border-l-4 border-green-400">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-2xl">✅</span>
+                                    <div>
+                                        <div class="font-bold">Place PMR détectée</div>
+                                        <div class="text-sm text-gray-400">Catégorie 1 - Tribune Présidentielle</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-semibold">08/01/2025</div>
+                                    <div class="text-xs text-gray-400">19:47</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLONNE DROITE - 4 cols -->
+            <div class="lg:col-span-4 space-y-6">
+                
+                <!-- Stats monitoring -->
+                <div class="glass rounded-3xl p-6 slide-in" style="animation-delay: 0.2s">
+                    <h3 class="text-xl font-black mb-6">Stats Monitoring</h3>
+                    <div class="space-y-4">
+                        <div class="stat-card p-5 rounded-xl">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Vérifications</div>
+                            <div class="text-4xl font-black gradient-text" id="stat-checks">0</div>
+                        </div>
+                        <div class="stat-card p-5 rounded-xl">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Places détectées</div>
+                            <div class="text-4xl font-black text-green-400" id="stat-detections">0</div>
+                        </div>
+                        <div class="stat-card p-5 rounded-xl">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Temps réponse</div>
+                            <div class="text-4xl font-black" id="stat-response-time">0.8s</div>
+                        </div>
+                        <div class="stat-card p-5 rounded-xl">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Alertes envoyées</div>
+                            <div class="text-4xl font-black text-cyan-400" id="stat-alerts">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Météo -->
+                <div class="glass rounded-3xl p-6 slide-in" style="animation-delay: 0.3s">
+                    <h3 class="text-xl font-black mb-6">Météo prévue</h3>
+                    <div class="text-center">
+                        <div class="text-6xl mb-4">🌤️</div>
+                        <div class="text-5xl font-black mb-2">8°C</div>
+                        <div class="text-sm text-gray-400 mb-6">Partiellement nuageux</div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="stat-card p-4 rounded-xl">
+                                <div class="text-2xl mb-1">💧</div>
+                                <div class="font-bold">15%</div>
+                                <div class="text-xs text-gray-400">Pluie</div>
+                            </div>
+                            <div class="stat-card p-4 rounded-xl">
+                                <div class="text-2xl mb-1">💨</div>
+                                <div class="font-bold">12 km/h</div>
+                                <div class="text-xs text-gray-400">Vent</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Composition PSG -->
+                <div class="glass rounded-3xl p-6 slide-in" style="animation-delay: 0.4s">
+                    <h3 class="text-xl font-black mb-6">Composition probable PSG</h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">GK</span>
+                            <span class="font-semibold">Donnarumma</span>
+                        </div>
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">DF</span>
+                            <span class="font-semibold leading-relaxed">Hakimi, Marquinhos, Skriniar, Mendes</span>
+                        </div>
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">MF</span>
+                            <span class="font-semibold leading-relaxed">Vitinha, Ugarte, Zaïre-Emery</span>
+                        </div>
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">FW</span>
+                            <span class="font-semibold leading-relaxed">Dembélé, Ramos, Barcola</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Composition OM -->
+                <div class="glass rounded-3xl p-6 slide-in" style="animation-delay: 0.5s">
+                    <h3 class="text-xl font-black mb-6">Composition probable OM</h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">GK</span>
+                            <span class="font-semibold">López</span>
+                        </div>
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">DF</span>
+                            <span class="font-semibold leading-relaxed">Clauss, Gigot, Balerdi, Tavares</span>
+                        </div>
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">MF</span>
+                            <span class="font-semibold leading-relaxed">Rongier, Veretout, Harit</span>
+                        </div>
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">FW</span>
+                            <span class="font-semibold leading-relaxed">Aubameyang, Moumbagna, Greenwood</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CTA Telegram -->
+        <div class="mt-8 gradient-bg border border-cyan-500/20 rounded-3xl p-10 text-center slide-in" style="animation-delay: 0.5s">
+            <div class="text-5xl mb-4">📱</div>
+            <h3 class="text-3xl font-black gradient-text mb-3">Recevez une alerte instantanée</h3>
+            <p class="text-gray-400 mb-6 max-w-2xl mx-auto">
+                Notification Telegram en temps réel dès qu'une place PMR se libère pour ce match
+            </p>
+            <a href="https://t.me/votre_bot" target="_blank" class="inline-flex items-center gap-3 bg-gradient-to-r from-cyan-500 to-green-500 hover:from-cyan-600 hover:to-green-600 text-black font-black px-10 py-5 rounded-xl transition-all transform hover:scale-105 text-lg">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z"/>
+                </svg>
+                Rejoindre le canal
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // URL du bot
+        const BOT_URL = 'https://app.lesbricolesdelekmane.fun';
+        
+        // Récupérer le nom du match depuis l'URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const matchName = urlParams.get('match');
+        
+        if (!matchName) {
+            // Rediriger vers la page d'accueil si pas de match spécifié
+            window.location.href = 'index.html';
+        }
+        
+        let currentMatch = null;
+        let groqIntervalId = null;
+        
+        // Charger les données du match
+        async function chargerDonneesMatch(reloadGroq = true) {
+            try {
+                const response = await fetch(`${BOT_URL}/status.json`);
+                const data = await response.json();
+                
+                // Trouver le match correspondant
+                const match = data.matchs.find(m => m.nom === matchName);
+                
+                if (!match) {
+                    // Match non trouvé, rediriger
+                    window.location.href = 'index.html';
+                    return;
+                }
+                
+                currentMatch = match;
+                
+                // Mettre à jour le titre
+                const titleParts = match.nom.split(' vs ');
+                const h1 = document.querySelector('h1');
+                if (h1) {
+                    h1.innerHTML = `
+                        <span class="gradient-text">${titleParts[0]}</span>
+                        <span class="text-gray-600 mx-3">vs</span>
+                        <span class="gradient-text">${titleParts[1] || ''}</span>
+                    `;
+                }
+                
+                // Mettre à jour le statut PMR
+                const pmrCard = document.querySelector('.glass.rounded-2xl.p-6');
+                if (pmrCard) {
+                    const pmrStatus = pmrCard.querySelector('.text-3xl.font-black');
+                    const pmrIcon = pmrCard.querySelector('.text-5xl');
+                    const borderEl = pmrCard.querySelector('.border-l-4');
+                    
+                    if (match.pmr_disponible) {
+                        if (pmrStatus) {
+                            pmrStatus.textContent = 'Disponibles';
+                            pmrStatus.className = 'text-3xl font-black text-green-400 mb-1';
+                        }
+                        if (pmrIcon) pmrIcon.textContent = '✅';
+                        if (borderEl) {
+                            borderEl.classList.remove('border-red-500');
+                            borderEl.classList.add('border-green-500');
+                        }
+                    } else {
+                        if (pmrStatus) {
+                            pmrStatus.textContent = 'Aucune';
+                            pmrStatus.className = 'text-3xl font-black text-red-400 mb-1';
+                        }
+                        if (pmrIcon) pmrIcon.textContent = '❌';
+                        if (borderEl) {
+                            borderEl.classList.remove('border-green-500');
+                            borderEl.classList.add('border-red-500');
+                        }
+                    }
+                    
+                    // Mettre à jour le dernier check
+                    const lastCheck = pmrCard.querySelector('.text-xs.text-gray-500');
+                    if (lastCheck) {
+                        lastCheck.textContent = `Dernière vérif: ${match.dernier_check}`;
+                    }
+                }
+                
+                // Mettre à jour les stats monitoring
+                const statChecks = document.getElementById('stat-checks');
+                if (statChecks) statChecks.textContent = match.nb_checks.toLocaleString('fr-FR');
+                
+                const statDetections = document.getElementById('stat-detections');
+                if (statDetections) {
+                    // Pour l'instant, on met 1 si PMR disponible, 0 sinon
+                    // Plus tard on pourra tracker le nombre réel de détections
+                    statDetections.textContent = match.pmr_disponible ? '1' : '0';
+                }
+                
+                // Charger les stats globales pour les alertes
+                fetch(`${BOT_URL}/status.json`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.statistiques) {
+                            const statAlerts = document.getElementById('stat-alerts');
+                            if (statAlerts) statAlerts.textContent = data.statistiques.alertes_envoyees || 0;
+                        }
+                    })
+                    .catch(err => console.error('Erreur chargement stats:', err));
+                
+                // Mettre à jour la comparaison avec autres matchs
+                updateComparison(data.matchs, match);
+                
+                // Charger l'analyse Groq si demandé
+                if (reloadGroq) {
+                    chargerAnalyseGroq(match);
+                }
+                
+            } catch (error) {
+                console.error('Erreur chargement données:', error);
+            }
+        }
+        
+        // Charger l'analyse Groq
+        async function chargerAnalyseGroq(match) {
+            try {
+                const response = await fetch(`${BOT_URL}/api/groq/analyze?match=${encodeURIComponent(match.nom)}`);
+                const analysis = await response.json();
+                
+                if (analysis.error) {
+                    console.error('Erreur analyse Groq:', analysis.error);
+                    return;
+                }
+                
+                // Mettre à jour le hype level
+                const hypeLevel = document.querySelector('.text-7xl.font-black.gradient-text');
+                if (hypeLevel) {
+                    hypeLevel.textContent = `${analysis.hype_level}%`;
+                }
+                
+                // Mettre à jour le label hype
+                const hypeLabel = document.querySelectorAll('.stat-card')[1]?.querySelector('.text-2xl.font-bold.mb-1');
+                if (hypeLabel) {
+                    hypeLabel.textContent = analysis.hype_label;
+                }
+                
+                // Mettre à jour l'affluence prévue
+                const affluenceCard = document.querySelectorAll('.stat-card')[2];
+                if (affluenceCard) {
+                    const affluenceEl = affluenceCard.querySelector('.text-2xl');
+                    if (affluenceEl) affluenceEl.textContent = `${analysis.affluence_prevue}%`;
+                }
+                
+                // Mettre à jour l'analyse
+                const analyseText = document.querySelector('.text-gray-300.leading-relaxed');
+                if (analyseText) {
+                    let analyseHTML = analysis.analyse;
+                    // Mettre en évidence la probabilité si présente
+                    if (analysis.probabilite_disponibilite !== undefined) {
+                        analyseHTML = analyseHTML.replace(
+                            new RegExp(`(${analysis.probabilite_disponibilite}%)`, 'g'),
+                            `<span class="text-white font-semibold">${analysis.probabilite_disponibilite}%</span>`
+                        );
+                    }
+                    analyseText.innerHTML = analyseHTML;
+                }
+                
+            } catch (error) {
+                console.error('Erreur chargement analyse Groq:', error);
+            }
+        }
+        
+        // Mettre à jour la comparaison avec autres matchs
+        function updateComparison(allMatches, currentMatch) {
+            const comparisonContainer = document.querySelector('.glass.rounded-3xl.p-8');
+            if (!comparisonContainer) return;
+            
+            // Trouver la section de comparaison
+            const comparisonSection = comparisonContainer.querySelector('.space-y-4');
+            if (!comparisonSection) return;
+            
+            // Trier les matchs par nombre de vérifications
+            const sortedMatches = [...allMatches].sort((a, b) => (b.nb_checks || 0) - (a.nb_checks || 0));
+            
+            // Calculer le max pour les pourcentages
+            const maxChecks = Math.max(...sortedMatches.map(m => m.nb_checks || 1), 1);
+            
+            comparisonSection.innerHTML = '';
+            
+            sortedMatches.forEach(m => {
+                const percentage = Math.round(((m.nb_checks || 0) / maxChecks) * 100);
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <div class="flex justify-between mb-2">
+                        <span class="font-semibold">${m.nom}</span>
+                        <span class="font-black ${m.nom === currentMatch.nom ? 'text-cyan-400' : ''}">${percentage}%</span>
+                    </div>
+                    <div class="h-3 bg-white/5 rounded-full overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-cyan-500 ${m.nom === currentMatch.nom ? 'to-green-500' : 'to-blue-500'}" style="width: ${percentage}%"></div>
+                    </div>
+                `;
+                comparisonSection.appendChild(div);
+            });
+        }
+        
+        // Fonction pour déterminer si c'est le jour du match
+        function estJourDuMatch(match) {
+            // TODO: Implémenter la détection du jour du match
+            // Pour l'instant, on retourne false par défaut
+            // On pourrait ajouter une date dans matches.json ou status.json
+            return false;
+        }
+        
+        // Gérer l'analyse Groq avec la bonne fréquence
+        function gererAnalyseGroq(match) {
+            // Nettoyer l'intervalle précédent si existe
+            if (groqIntervalId) {
+                clearInterval(groqIntervalId);
+            }
+            
+            const estAujourdhui = estJourDuMatch(match);
+            const intervalle = estAujourdhui ? 600000 : 18000000; // 10 min ou 5 heures
+            
+            // Charger immédiatement
+            chargerAnalyseGroq(match);
+            
+            // Puis recharger selon l'intervalle
+            groqIntervalId = setInterval(() => {
+                chargerAnalyseGroq(match);
+                // Re-vérifier si on est toujours le jour du match
+                const nouvelleEstAujourdhui = estJourDuMatch(match);
+                if (nouvelleEstAujourdhui !== estAujourdhui) {
+                    // Relancer avec le nouvel intervalle
+                    gererAnalyseGroq(match);
+                }
+            }, intervalle);
+        }
+        
+        // Mettre à jour le graphique
+        function updateChart(matchData) {
+            const canvas = document.getElementById('checkChart');
+            if (!canvas) return;
+            
+            // Si pas assez de données, masquer le graphique
+            if (!matchData || matchData.nb_checks < 7) {
+                canvas.parentElement.style.display = 'none';
+                return;
+            }
+            
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            
+            // Détruire tout graphique existant
+            if (window.myChart) {
+                window.myChart.destroy();
+            }
+            
+            // Créer des données basiques (on peut améliorer ça plus tard avec un vrai historique)
+            const labels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+            // Répartir les vérifications sur 7 jours (approximation)
+            const checksPerDay = Math.floor(matchData.nb_checks / 7);
+            const data = labels.map(() => checksPerDay + Math.floor(Math.random() * 20));
+            
+            // Créer le nouveau graphique
+            window.myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Vérifications',
+                        data: data,
+                        borderColor: '#00d4ff',
+                        backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 1000
+                    },
+                    plugins: {
+                        legend: { 
+                            display: false 
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { 
+                                color: 'rgba(255,255,255,0.05)',
+                                drawBorder: false
+                            },
+                            ticks: { 
+                                color: '#666',
+                                padding: 10
+                            }
+                        },
+                        x: {
+                            grid: { 
+                                color: 'rgba(255,255,255,0.05)',
+                                drawBorder: false
+                            },
+                            ticks: { 
+                                color: '#666',
+                                padding: 10
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Charger au démarrage
+        chargerDonneesMatch().then(() => {
+            if (currentMatch) {
+                updateChart(currentMatch);
+                gererAnalyseGroq(currentMatch);
+            }
+        });
+        
+        // Recharger les données toutes les 10 secondes (sans l'analyse Groq)
+        setInterval(() => {
+            chargerDonneesMatch(false);
+        }, 10000);
+    </script>
+</body>
+</html>

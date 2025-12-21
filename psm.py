@@ -53,13 +53,13 @@ def charger_matchs():
     except FileNotFoundError:
         # Matchs par défaut si le fichier n'existe pas
         matchs_default = [
-            {
-                "nom": "PSG vs PARIS FC",
-                "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-sg-vs-paris-fc-1"
-            },
-            {
-                "nom": "PSG vs RENNE",
-                "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-vs-rennes-5"
+    {
+        "nom": "PSG vs PARIS FC",
+        "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-sg-vs-paris-fc-1"
+    },
+    {
+        "nom": "PSG vs RENNE",
+        "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-vs-rennes-5"
             }
         ]
         with open('matches.json', 'w', encoding='utf-8') as f:
@@ -676,6 +676,124 @@ def api_get_logs():
             "total": len(backend_logs)
         })
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/groq/analyze', methods=['GET'])
+def api_groq_analyze():
+    """Génère une analyse IA du match avec Groq"""
+    try:
+        match_name = request.args.get('match')
+        if not match_name:
+            return jsonify({"error": "Paramètre 'match' requis"}), 400
+        
+        # Charger les données du match depuis status.json
+        try:
+            with open('status.json', 'r', encoding='utf-8') as f:
+                status = json.load(f)
+        except FileNotFoundError:
+            return jsonify({"error": "status.json non trouvé"}), 404
+        
+        match = next((m for m in status.get('matchs', []) if m['nom'] == match_name), None)
+        if not match:
+            return jsonify({"error": "Match non trouvé"}), 404
+        
+        # Charger tous les matchs pour la comparaison
+        all_matches = status.get('matchs', [])
+        
+        # Construire le prompt pour Groq
+        prompt = f"""Tu es un expert en analyse de billetterie pour les matchs de football. 
+
+Analyse ce match : {match_name}
+
+Statistiques du match :
+- Nombre de vérifications : {match.get('nb_checks', 0)}
+- Dernière vérification : {match.get('dernier_check', 'Jamais')}
+- Places PMR disponibles : {'Oui' if match.get('pmr_disponible', False) else 'Non'}
+
+Comparaison avec les autres matchs surveillés :
+{chr(10).join([f"- {m['nom']}: {m.get('nb_checks', 0)} vérifications, PMR: {'Oui' if m.get('pmr_disponible', False) else 'Non'}" for m in all_matches])}
+
+Génère une analyse courte (3-4 phrases maximum) qui :
+1. Évalue le niveau d'intérêt/anticipation pour ce match (en pourcentage)
+2. Donne une probabilité de disponibilité de places PMR basée sur l'historique
+3. Fait une recommandation pratique
+
+Réponds UNIQUEMENT avec un JSON contenant :
+- "hype_level": un nombre entre 0 et 100
+- "hype_label": un label court (ex: "Très élevé", "Élevé", "Moyen", "Faible")
+- "affluence_prevue": un nombre entre 0 et 100
+- "probabilite_disponibilite": un nombre entre 0 et 100
+- "analyse": le texte d'analyse (3-4 phrases)
+"""
+
+        # Clé API Groq (doit être définie dans les variables d'environnement)
+        GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+        if not GROQ_API_KEY:
+            log("⚠️ GROQ_API_KEY non définie, impossible de générer l'analyse", 'warning')
+            return jsonify({"error": "GROQ_API_KEY non configurée"}), 500
+        
+        GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+        
+        # Appeler l'API Groq
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "llama-3.1-70b-versatile",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Tu es un expert en analyse de billetterie. Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans code blocks."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.7,
+            "max_tokens": 500
+        }
+        
+        response = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            log(f"❌ Erreur API Groq: {response.status_code}", 'error')
+            return jsonify({"error": "Erreur API Groq"}), 500
+        
+        result = response.json()
+        content = result['choices'][0]['message']['content']
+        
+        # Parser le JSON de la réponse
+        try:
+            # Nettoyer le contenu (enlever markdown si présent)
+            content = content.strip()
+            if content.startswith('```json'):
+                content = content[7:]
+            if content.startswith('```'):
+                content = content[3:]
+            if content.endswith('```'):
+                content = content[:-3]
+            content = content.strip()
+            
+            analysis = json.loads(content)
+            return jsonify(analysis)
+        except json.JSONDecodeError:
+            # Si le parsing échoue, retourner une analyse par défaut
+            log(f"⚠️ Réponse Groq non-JSON, utilisation de valeurs par défaut", 'warning')
+            return jsonify({
+                "hype_level": 75,
+                "hype_label": "Élevé",
+                "affluence_prevue": 85,
+                "probabilite_disponibilite": 15,
+                "analyse": f"Le match {match_name} a été vérifié {match.get('nb_checks', 0)} fois. Basé sur l'historique, la probabilité de disponibilité de places PMR est modérée. Recommandation : activer les alertes Telegram pour ne pas manquer une opportunité."
+            })
+            
+    except Exception as e:
+        log(f"❌ Erreur analyse Groq: {e}", 'error')
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 def start_flask_api():

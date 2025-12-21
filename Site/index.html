@@ -485,6 +485,10 @@
                 data.matchs.forEach((match) => {
                     const card = document.createElement('div');
                     card.className = 'card';
+                    card.style.cursor = 'pointer';
+                    card.onclick = () => {
+                        window.location.href = `more.html?match=${encodeURIComponent(match.nom)}`;
+                    };
                     card.innerHTML = `
                         <div class="card-tag">Ligue 1</div>
                         <div class="match-name">${match.nom}</div>
@@ -508,6 +512,17 @@
                                 <div class="meta-label">Vérifications</div>
                                 <div class="meta-value">${match.nb_checks}</div>
                             </div>
+                        </div>
+                        
+                        <div style="margin-top: 20px; text-align: center;">
+                            <a href="more.html?match=${encodeURIComponent(match.nom)}" 
+                               onclick="event.stopPropagation();"
+                               style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: rgba(0, 212, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); border-radius: 8px; color: #00d4ff; text-decoration: none; font-weight: 600; transition: all 0.3s;">
+                                <span>Voir les détails</span>
+                                <svg style="width: 16px; height: 16px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                </svg>
+                            </a>
                         </div>
                     `;
                     container.appendChild(card);
