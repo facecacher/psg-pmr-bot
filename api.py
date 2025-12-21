@@ -166,6 +166,30 @@ def track_visitor():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/analytics/telegram-click', methods=['POST'])
+def track_telegram_click():
+    """Enregistre un clic sur le bouton Telegram"""
+    try:
+        # Charger analytics
+        try:
+            with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
+                analytics = json.load(f)
+        except FileNotFoundError:
+            analytics = {
+                "clics_telegram": 0
+            }
+        
+        # Incrémenter
+        analytics["clics_telegram"] = analytics.get("clics_telegram", 0) + 1
+        
+        # Sauvegarder
+        with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(analytics, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ====================
 # ENDPOINTS BOT CONTROL
 # ====================
