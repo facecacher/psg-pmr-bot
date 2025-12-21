@@ -7,6 +7,16 @@ import json
 import os
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+import locale
+
+# Configuration locale pour les dates en français
+try:
+    locale.setlocale(locale.LC_TIME, 'fr_FR.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_TIME, 'French_France.1252')
+    except:
+        pass  # Si la locale n'est pas disponible, on utilisera une fonction de remplacement
 
 # ✅ LISTE DES MATCHS À SURVEILLER
 MATCHS = [
@@ -31,6 +41,21 @@ nb_checks_par_match = {}
 dernier_check_par_match = {}
 pmr_disponible_par_match = {}
 
+# Mois en français
+MOIS_FR = {
+    1: "janvier", 2: "février", 3: "mars", 4: "avril",
+    5: "mai", 6: "juin", 7: "juillet", 8: "août",
+    9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+}
+
+def formater_date_francaise(dt):
+    """Formate une date en français avec le mois en lettres"""
+    jour = dt.day
+    mois = MOIS_FR[dt.month]
+    annee = dt.year
+    heure = dt.strftime("%H:%M:%S")
+    return f"{jour} {mois} {annee} à {heure}"
+
 def envoyer_message(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": msg}
@@ -44,7 +69,7 @@ def sauvegarder_status():
     """Sauvegarde l'état du bot dans status.json pour le site web"""
     status = {
         "bot_actif": True,
-        "derniere_mise_a_jour": datetime.now().strftime("%d/%m/%Y à %H:%M:%S"),
+        "derniere_mise_a_jour": formater_date_francaise(datetime.now()),
         "matchs": []
     }
     
@@ -167,10 +192,10 @@ def verifier_match(match):
             pmr_disponible_par_match[nom] = len(pmr_elements) > 0
 
             if len(pmr_elements) > 0:
-                envoyer_message(f"✅ [{heure}] PLACE PMR DISPONIBLE POUR {nom}")
+                envoyer_message(f"🔥 ALERTE PLACE PMR DISPONIBLE ! 🔥\n\n🎟️ Match : {nom}\n✅ Places PMR trouvées !\n\n👉 Fonce sur la billetterie maintenant !")
             else:
                 if datetime.now() - dernier_message_indispo[nom] >= timedelta(hours=8):
-                    envoyer_message(f"❌ [{heure}] TOUJOURS PAS DE PLACE PMR POUR {nom}")
+                    envoyer_message(f"😴 Pas encore de places PMR...\n\n🎟️ Match : {nom}\n❌ Aucune place PMR disponible pour le moment\n\n💪 On continue de surveiller pour toi !")
                     dernier_message_indispo[nom] = datetime.now()
                 else:
                     print(f"{nom} → Pas de PMR (cooldown actif)")
