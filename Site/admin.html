@@ -781,30 +781,70 @@
         }
 
         async function deleteMatch(index) {
-            if (confirm('Supprimer ce match ?')) {
+            // Récupérer le nom du match avant suppression pour l'afficher
+            let matchName = 'ce match';
+            try {
+                const matchesResponse = await fetch(`${API_URL}/matches`);
+                const matchesData = await matchesResponse.json();
+                if (matchesData[index]) {
+                    matchName = matchesData[index].nom;
+                }
+            } catch (e) {
+                // Ignorer l'erreur, on utilisera le nom par défaut
+            }
+            
+            if (confirm(`Supprimer le match "${matchName}" ?`)) {
                 try {
                     const response = await fetch(`${API_URL}/matches/${index}`, {
                         method: 'DELETE'
                     });
                     
                     if (response.ok) {
-                        addLog('error', 'Match supprimé');
-                        loadData();
+                        const result = await response.json();
+                        addLog('success', `Match "${matchName}" supprimé avec succès`);
+                        loadData(); // Recharger les données
+                    } else {
+                        const errorData = await response.json();
+                        addLog('error', `Erreur: ${errorData.error || 'Erreur inconnue'}`);
                     }
                 } catch (error) {
-                    addLog('error', 'Erreur: ' + error.message);
+                    addLog('error', 'Erreur réseau: ' + error.message);
                 }
             }
         }
 
         async function checkMatch(index) {
-            addLog('info', 'Vérification forcée...');
+            // Récupérer le nom du match pour l'afficher
+            let matchName = 'ce match';
             try {
-                await fetch(`${API_URL}/matches/${index}/check`, {
+                const matchesResponse = await fetch(`${API_URL}/matches`);
+                const matchesData = await matchesResponse.json();
+                if (matchesData[index]) {
+                    matchName = matchesData[index].nom;
+                }
+            } catch (e) {
+                // Ignorer l'erreur
+            }
+            
+            addLog('info', `Vérification forcée de "${matchName}" en cours...`);
+            try {
+                const response = await fetch(`${API_URL}/matches/${index}/check`, {
                     method: 'POST'
                 });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    addLog('success', result.message || `Vérification de "${matchName}" lancée`);
+                    // Recharger les données après quelques secondes pour voir le résultat
+                    setTimeout(() => {
+                        loadData();
+                    }, 3000);
+                } else {
+                    const errorData = await response.json();
+                    addLog('error', `Erreur: ${errorData.error || 'Erreur inconnue'}`);
+                }
             } catch (error) {
-                addLog('error', 'Erreur: ' + error.message);
+                addLog('error', 'Erreur réseau: ' + error.message);
             }
         }
 

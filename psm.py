@@ -341,7 +341,38 @@ def api_delete_match(index):
 @app.route('/api/matches/<int:index>/check', methods=['POST'])
 def api_force_check(index):
     """Force la vérification d'un match spécifique"""
-    return jsonify({"success": True, "message": "Vérification lancée"})
+    try:
+        # Charger les matchs
+        try:
+            with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
+                matches = json.load(f)
+        except FileNotFoundError:
+            matches = charger_matchs()
+        
+        # Vérifier que l'index est valide
+        if 0 <= index < len(matches):
+            match = matches[index]
+            nom = match.get("nom", "Match inconnu")
+            
+            # Lancer la vérification dans un thread séparé pour ne pas bloquer
+            def verifier_en_background():
+                print(f"🔄 Vérification forcée de {nom}...")
+                verifier_match(match)
+                print(f"✅ Vérification forcée de {nom} terminée")
+            
+            threading.Thread(target=verifier_en_background, daemon=True).start()
+            
+            return jsonify({
+                "success": True, 
+                "message": f"Vérification de {nom} lancée en arrière-plan"
+            })
+        else:
+            return jsonify({"error": "Index invalide"}), 404
+    except Exception as e:
+        print(f"❌ Erreur vérification forcée: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analytics', methods=['GET'])
 def api_get_analytics():
