@@ -1,12 +1,27 @@
 FROM python:3.11-slim
+
+# Installer Chrome et dépendances
 RUN apt-get update && apt-get install -y \
-    wget curl unzip libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
-    libasound2 libpangocairo-1.0-0 libpango-1.0-0 libgtk-3-0 libx11-xcb1 \
+    wget \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
+    libnss3 \
+    libxss1 \
     && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
-COPY . /app
+
+# Installer les packages Python
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Installer Chromium pour Playwright
 RUN playwright install chromium
-# Utiliser python -u pour les logs non bufferisés
+RUN playwright install-deps chromium
+
+# Copier le script
+COPY psm.py .
+
+# Lancer le script
 CMD ["python", "-u", "psm.py"]

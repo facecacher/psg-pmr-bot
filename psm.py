@@ -17,25 +17,8 @@ MATCHS = [
     },
 ]
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
-
-# Vérification des variables d'environnement
-if not TELEGRAM_TOKEN:
-    print("❌ ERREUR: TELEGRAM_TOKEN n'est pas défini!")
-    print("💡 Vérifiez que la variable d'environnement TELEGRAM_TOKEN est configurée dans Dokploy")
-    import sys
-    sys.exit(1)
-if not CHAT_ID:
-    print("❌ ERREUR: TELEGRAM_CHAT_ID n'est pas défini!")
-    print("💡 Vérifiez que la variable d'environnement TELEGRAM_CHAT_ID est configurée dans Dokploy")
-    import sys
-    sys.exit(1)
-
-print("🚀 Bot PSM démarré!")
-print(f"📋 Mode headless: {HEADLESS}")
-print(f"📊 Nombre de matchs à surveiller: {len(MATCHS)}")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8222793392:AAFBtlCNAlPyUYgf1aup06HAvRO9V14DmRo")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "-1003428870741")
 
 # Cooldown par match
 dernier_message_indispo = {}
@@ -58,8 +41,24 @@ def verifier_match(match):
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=HEADLESS)
-            page = browser.new_page()
+            browser = p.chromium.launch(
+                headless=True,  # Mode invisible, fonctionne sans écran
+                args=[
+                    '--no-sandbox',  # Permissions Docker
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',  # Évite les problèmes de mémoire
+                    '--disable-gpu',  # Pas de carte graphique nécessaire
+                    '--window-size=1920x1080'
+                ]
+            )
+            
+            # Ajouter un contexte pour éviter la détection
+            context = browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            )
+            
+            page = context.new_page()  # Au lieu de browser.new_page()
 
             page.goto(url, timeout=60000)
             page.wait_for_load_state("networkidle")
@@ -82,29 +81,19 @@ def verifier_match(match):
                 else:
                     print(f"{nom} → Pas de PMR (cooldown actif)")
 
+            context.close()
             browser.close()
 
     except Exception as e:
         print(f"⚠️ Erreur sur {nom} :", e)
 
 # ✅ BOUCLE PRINCIPALE MULTI-MATCHS
-print("🔄 Démarrage de la surveillance...")
-import sys
-try:
-    while True:
-        for match in MATCHS:
-            verifier_match(match)
+while True:
+    for match in MATCHS:
+        verifier_match(match)
 
-        pause = 90 + random.randint(0, 5)
-        print(f"⏳ Pause {pause} secondes...")
-        sys.stdout.flush()  # Force l'affichage des logs
-        time.sleep(pause)
-except KeyboardInterrupt:
-    print("🛑 Arrêt demandé par l'utilisateur")
-except Exception as e:
-    print(f"💥 ERREUR FATALE: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
+    pause = 90 + random.randint(0, 5)
+    print(f"⏳ Pause {pause} secondes...")
+    time.sleep(pause)
 
 
