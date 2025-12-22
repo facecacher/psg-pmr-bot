@@ -106,6 +106,215 @@ def charger_matchs():
 # FONCTIONS HELPER POUR GROQ
 # ====================
 
+def build_groq_prompt(match_name, match_data, match_status, comparison_matches):
+    """
+    Construit un prompt optimisé pour l'API Groq
+    
+    Args:
+        match_name: Nom du match (ex: "PSG vs OM")
+        match_data: Données du match depuis matches.json (competition, date, time, lieu)
+        match_status: Statut actuel depuis status.json (nb_checks, pmr_disponible)
+        comparison_matches: Liste des matchs de comparaison
+    
+    Returns:
+        str: Prompt formaté pour Groq
+    """
+    
+    # === 1. EXTRAIRE LES DONNÉES ESSENTIELLES ===
+    teams = extract_teams_from_match_name(match_name)
+    home_team = teams['home']
+    away_team = teams['away']
+    
+    nb_checks = match_status.get('nb_checks', 0)
+    pmr_available = match_status.get('pmr_disponible', False)
+    
+    # === 2. DÉTERMINER L'IMPORTANCE DU MATCH ===
+    importance = detect_match_importance(home_team, away_team, match_name)
+    rivalry = importance['rivalry']
+    is_high_profile = importance['is_high_profile']
+    
+    # === 3. CONSTRUIRE LA SECTION DATE/HEURE ===
+    # Si on a des données réelles, les utiliser. Sinon demander à Groq de générer
+    if match_data and match_data.get('date') and match_data.get('time'):
+        match_date_obj = datetime.strptime(match_data['date'], '%Y-%m-%d')
+        jours_semaine = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+        jour_semaine = jours_semaine[match_date_obj.weekday()]
+        mois_fr = MOIS_FR[match_date_obj.month]
+        
+        date_info = f"""
+Date et heure RÉELLES (à utiliser exactement):
+- Date: {jour_semaine} {match_date_obj.day} {mois_fr.capitalize()} {match_date_obj.year}
+- Heure: {match_data.get('time', '21:00')}
+- Compétition: {match_data.get('competition', 'Ligue 1')}
+- Lieu: {match_data.get('lieu', 'Parc des Princes')}
+"""
+        weather_instruction = f"Génère une météo réaliste pour {match_data.get('lieu', 'Paris')} le {jour_semaine} {match_date_obj.day} {mois_fr} à {match_data.get('time')}."
+    else:
+        current_date = datetime.now()
+        date_info = f"""
+Génère des informations RÉALISTES pour ce match:
+- Date: Une date future cohérente avec le calendrier Ligue 1 2024-2025
+- Heure: Varie selon le type de match (17h00, 19h00, 21h00)
+- Compétition: Ligue 1, Coupe de France, ou Ligue des Champions
+- Lieu: Parc des Princes (sauf cas particulier)
+IMPORTANT: Génère des dates/heures DIFFÉRENTES pour chaque match.
+"""
+        weather_instruction = "Génère une météo réaliste pour la date que tu as générée."
+    
+    # === 4. CONSTRUIRE LA LISTE DE COMPARAISON ===
+    if comparison_matches:
+        comparison_list = "\n".join([
+            f"   {i+1}. {m['name']}" 
+            for i, m in enumerate(comparison_matches)
+        ])
+        comparison_keys = "\n".join([
+            f'    "{m["key"]}": number,'
+            for m in comparison_matches
+        ])
+        comparison_names = "\n".join([
+            f'    "{m["key"]}_name": "{m["name"]}",'
+            for m in comparison_matches
+        ])
+    else:
+        comparison_list = f"""
+   1. {home_team} vs Lyon (grand rival)
+   2. {home_team} vs Monaco (affiche attractive)
+   3. {home_team} vs Lens (match moyen)
+"""
+        comparison_keys = """
+    "match_1": number,
+    "match_2": number,
+    "match_3": number,"""
+        comparison_names = """
+    "match_1_name": "{home_team} vs Lyon",
+    "match_2_name": "{home_team} vs Monaco",
+    "match_3_name": "{home_team} vs Lens","""
+    
+    # === 5. DÉTERMINER LES SCORES ATTENDUS ===
+    # Donner des fourchettes claires basées sur l'importance
+    if importance['is_classico']:
+        score_range = "90-100 (Le Classique = demande maximale)"
+    elif importance['is_ol']:
+        score_range = "80-92 (grande affiche)"
+    elif importance['is_monaco']:
+        score_range = "75-88 (affiche attractive)"
+    else:
+        score_range = "60-80 (match régulier)"
+    
+    # === 6. PROMPT FINAL STRUCTURÉ ===
+    prompt = f"""Tu es un expert en football français et accessibilité PMR (Personnes à Mobilité Réduite).
+
+CONTEXTE:
+Cette analyse est pour un site qui surveille automatiquement les places PMR au Parc des Princes.
+- Les places PMR sont TRÈS rares (quelques dizaines par match max)
+- Le bot a vérifié ce match {nb_checks} fois
+- Statut actuel: {"✅ Places PMR disponibles" if pmr_available else "❌ Aucune place disponible"}
+
+MATCH À ANALYSER:
+- Équipes: {match_name}
+- Type de match: {rivalry}
+{date_info}
+
+TÂCHES:
+
+1. ANALYSE D'ANTICIPATION PMR
+   Score attendu pour ce match: {score_range}
+   
+   Génère:
+   - hype_score (0-100): Niveau d'anticipation des supporters
+   - affluence_prevue (0-100): Taux de remplissage prévu
+   - probabilite_pmr (0-100): Chance qu'une place PMR se libère
+     * Considère la rareté extrême des places PMR
+     * Plus le match est important, plus c'est rare
+     * {nb_checks} vérifications déjà effectuées
+   
+   - analyse (7-10 phrases): Explication détaillée incluant:
+     * Importance du match pour les supporters PMR
+     * Probabilité de disponibilité et facteurs
+     * Conseils pratiques (activer alertes Telegram, etc.)
+     * Encouragement et contexte d'accessibilité
+
+2. COMPARAISON AVEC AUTRES MATCHS
+   Compare "{match_name}" avec ces matchs du calendrier:
+{comparison_list}
+   
+   Génère un score (0-100) pour chaque match.
+   Règle: Le Classique > OL > Monaco > autres équipes
+
+3. MÉTÉO PRÉVUE
+   {weather_instruction}
+   
+   Génère:
+   - temperature: en °C (cohérent avec la saison)
+   - condition: description détaillée
+   - rain_chance: 0-100
+   - wind_speed: km/h
+   - emoji: ☀️, 🌤️, ⛅, 🌧️, ⛈️
+
+4. COMPOSITIONS PROBABLES
+   Utilise les effectifs RÉELS saison 2024-2025:
+   
+   {home_team}:
+   {"- PSG: Donnarumma (GK), Hakimi, Marquinhos (C), Skriniar, Mendes (DF), Vitinha, Zaïre-Emery, Ugarte (MF), Dembélé, Ramos, Barcola (FW)" if home_team == 'PSG' else f"- Utilise les vrais joueurs actuels de {home_team}"}
+   - Formation: 4-3-3 typique ou variante
+   
+   {away_team}:
+   {"- OM: López (GK), Clauss, Gigot, Balerdi, Tavares (DF), Rongier, Veretout, Harit (MF), Aubameyang, Greenwood, Moumbagna (FW)" if 'OM' in away_team or 'Marseille' in away_team else f"- Utilise les vrais joueurs actuels de {away_team}"}
+   - Formation: adaptée à l'équipe
+
+IMPORTANT:
+- Adapte TOUS les scores au match spécifique
+- Sois cohérent: scores plus élevés = matchs plus importants
+- Météo réaliste pour la période
+- Noms de joueurs réels 2024-2025
+
+RÉPONDS UNIQUEMENT avec ce JSON (sans markdown, sans texte avant/après):
+
+{{
+  "match_info": {{
+    "competition": "string",
+    "match_type": "string",
+    "date_formatted": "string",
+    "time": "string"
+  }},
+  "analysis": {{
+    "hype_score": number,
+    "affluence_prevue": number,
+    "probabilite_pmr": number,
+    "analyse": "string (7-10 phrases détaillées)"
+  }},
+  "comparison": {{
+    "current_match": number,
+{comparison_keys}
+{comparison_names}
+  }},
+  "weather": {{
+    "temperature": number,
+    "condition": "string",
+    "rain_chance": number,
+    "wind_speed": number,
+    "emoji": "string"
+  }},
+  "lineups": {{
+    "home": {{
+      "formation": "string",
+      "gk": ["string"],
+      "df": ["string", "string", "string", "string"],
+      "mf": ["string", "string", "string"],
+      "fw": ["string", "string", "string"]
+    }},
+    "away": {{
+      "formation": "string",
+      "gk": ["string"],
+      "df": ["string", "string", "string", "string"],
+      "mf": ["string", "string", "string"],
+      "fw": ["string", "string", "string"]
+    }}
+  }}
+}}"""
+    
+    return prompt
+
 def extract_teams_from_match_name(match_name):
     """Extrait les équipes depuis le nom du match"""
     # Format attendu: "PSG vs OM" ou "PSG vs PARIS FC"
@@ -923,319 +1132,8 @@ def api_groq_analyze():
         # Récupérer les VRAIS matchs de comparaison depuis matches.json
         comparison_matches = get_comparison_matches(match_name, home_team, limit=3)
         
-        # Utiliser les données du match si disponibles, sinon laisser Groq générer
-        if match_data and match_data.get('date') and match_data.get('time'):
-            # Formater la date depuis le format ISO (YYYY-MM-DD)
-            match_date_obj = datetime.strptime(match_data['date'], '%Y-%m-%d')
-            jours_semaine = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
-            jour_semaine = jours_semaine[match_date_obj.weekday()]
-            mois_fr = MOIS_FR[match_date_obj.month]
-            date_formatted_fr = f"{jour_semaine} {match_date_obj.day} {mois_fr.capitalize()} {match_date_obj.year}"
-            time_formatted = match_data.get('time', '21:00')
-            competition = match_data.get('competition', 'Ligue 1')
-            lieu = match_data.get('lieu', 'Parc des Princes')
-            use_match_data = True
-        else:
-            # Pas de données, laisser Groq générer
-            current_date = datetime.now()
-            saison_info = f"Saison 2024-2025, nous sommes actuellement en {MOIS_FR[current_date.month].capitalize()} {current_date.year}"
-            use_match_data = False
-        
-        # Construire la section comparaison
-        if comparison_matches:
-            comparison_section = f"""
-2. COMPARAISON AVEC AUTRES MATCHS DE {home_team}:
-   
-   Analyse ET compare "{match_name}" avec ces matchs RÉELS du calendrier :
-   
-   {chr(10).join([f'   {i+1}. {m["name"]}' for i, m in enumerate(comparison_matches)])}
-   
-   Pour CHAQUE match ci-dessus, analyse son importance et donne un score d'anticipation (0-100).
-   Règles:
-   - {home_team}-OM (Le Classique) = toujours le plus haut (90-100)
-   - {home_team}-Lyon = très attractif (80-92)
-   - {home_team}-Monaco = attractif (75-88)
-   - Autres équipes = variable selon classement (60-80)
-   
-   Compare "{match_name}" avec ces matchs et classe-les par importance.
-   Retourne les scores pour:
-   - current_match: score de "{match_name}"
-   {chr(10).join([f'   - {m["key"]}: score de "{m["name"]}"' for m in comparison_matches])}
-"""
-        else:
-            comparison_section = f"""
-2. COMPARAISON AVEC AUTRES MATCHS:
-   Génère des scores estimés pour 3 autres matchs importants de {home_team}:
-   - match_1: {home_team} vs Lyon (grand rival)
-   - match_2: {home_team} vs Monaco (affiche attractive)
-   - match_3: {home_team} vs Lens (match moyen)
-"""
-        
-        # Construire les parties du prompt qui contiennent des backslashes
-        psg_lineup_text = '- Utilise les vrais joueurs du PSG actuel: Donnarumma (GK), Hakimi, Marquinhos (C), Skriniar, Mendes (DF), Vitinha, Zaïre-Emery, Ugarte (MF), Dembélé, Ramos, Barcola (FW)'
-        om_lineup_text = "- Utilise les vrais joueurs de l'OM actuel: López (GK), Clauss, Gigot, Balerdi, Tavares (DF), Rongier, Veretout, Harit (MF), Aubameyang, Greenwood, Moumbagna (FW)"
-        
-        home_lineup_instruction = psg_lineup_text if home_team == 'PSG' else f'- Utilise les vrais joueurs actuels de {home_team}'
-        away_lineup_instruction = om_lineup_text if ('OM' in away_team or 'Marseille' in away_team) else f'- Utilise les vrais joueurs actuels de {away_team}'
-        
-        # Construire la partie comparaison (sans backslash dans les expressions)
-        comparison_json_lines = []
-        comparison_name_lines = []
-        if comparison_matches:
-            for m in comparison_matches:
-                comparison_json_lines.append(f'    "{m["key"]}": number,')
-                comparison_name_lines.append(f'    "{m["key"]}_name": "{m["name"]}",')
-        else:
-            comparison_json_lines = ['    "match_1": number,', '    "match_2": number,', '    "match_3": number,']
-        
-        # Construire les chaînes de comparaison
-        comparison_json_str = '\n'.join(comparison_json_lines)
-        comparison_name_str = '\n'.join(comparison_name_lines) if comparison_name_lines else ''
-        
-        # Construire les parties du prompt avec des conditions
-        importance_text = 'Match à très forte affluence' if importance['is_high_profile'] else 'Match d\'importance moyenne'
-        classico_text = 'Le Classique PSG-OM génère toujours une demande exceptionnelle (90-100%).' if importance['is_classico'] else ''
-        ol_text = 'PSG-OL est une affiche majeure de Ligue 1 (80-95%).' if importance['is_ol'] else ''
-        monaco_text = 'PSG-Monaco est un match attractif (75-90%).' if importance['is_monaco'] else ''
-        other_text = 'Pour un match moins médiatisé, ajuste les scores en conséquence (60-85%).' if not importance['is_high_profile'] else ''
-        
-        # Construire le template JSON séparément
-        json_template = """{{
-  "match_info": {{
-    "competition": "string (ex: Ligue 1, Coupe de France, Ligue des Champions)",
-    "match_type": "string (ex: Le Classique, Derby, Match de championnat, etc.)",
-    "date_formatted": "string (format: 'Dimanche 15 Janvier 2025')",
-    "time": "string (format: '21:00')"
-  }},
-  "analysis": {{
-    "hype_score": number,
-    "affluence_prevue": number,
-    "probabilite_pmr": number,
-    "analyse": "string adaptée à """ + match_name + """"
-  }},
-  "comparison": {{
-    "current_match": number,
-""" + comparison_json_str + """
-""" + comparison_name_str + """
-  }},
-  "weather": {{
-    "temperature": number,
-    "condition": "string",
-    "rain_chance": number,
-    "wind_speed": number,
-    "emoji": "string"
-  }},
-  "lineups": {{
-    "home": {{
-      "formation": "string",
-      "gk": ["string"],
-      "df": ["string", "string", "string", "string"],
-      "mf": ["string", "string", "string"],
-      "fw": ["string", "string", "string"]
-    }},
-    "away": {{
-      "formation": "string",
-      "gk": ["string"],
-      "df": ["string", "string", "string", "string"],
-      "mf": ["string", "string", "string"],
-      "fw": ["string", "string", "string"]
-    }}
-  }}
-}}"""
-        
-        # Construire le prompt complet en concaténant les parties
-        prompt = f"""Tu es un expert en football français, météorologie, analyse de données sportives ET accessibilité pour personnes à mobilité réduite.
-
-═══════════════════════════════════════════════════════════════
-CONTEXTE DE L'APPLICATION ET DU SITE WEB
-═══════════════════════════════════════════════════════════════
-
-Cette analyse est générée pour un site web dédié à la surveillance des places PMR (Personnes à Mobilité Réduite) pour les matchs du PSG au Parc des Princes.
-
-PROBLÈME RÉSOLU PAR L'APPLICATION:
-- Les places PMR au Parc des Princes sont EXTÊMEMENT rares et difficiles à obtenir
-- La billetterie PSG met ces places en vente de manière aléatoire et imprévisible
-- Les places partent en quelques minutes, parfois secondes
-- Les personnes en situation de handicap doivent surveiller la billetterie 24/7 pour ne pas rater une opportunité
-- C'est un vrai parcours du combattant pour obtenir une place PMR
-
-FONCTIONNEMENT DU BOT:
-- Un bot automatisé surveille la billetterie PSG en continu (toutes les ~90 secondes)
-- Il détecte automatiquement quand des places PMR se libèrent
-- Il envoie une alerte Telegram instantanée dès qu'une place est disponible
-- Le bot a déjà effectué {match.get('nb_checks', 0)} vérifications pour ce match
-- Statut actuel: {'✅ Places PMR DISPONIBLES' if match.get('pmr_disponible', False) else '❌ Aucune place PMR disponible pour le moment'}
-
-LE SITE WEB:
-- Site public accessible à tous pour voir l'état de la surveillance en temps réel
-- Affiche pour chaque match: disponibilité PMR, nombre de vérifications, dernier check
-- Interface admin pour gérer les matchs surveillés
-- Analytics de fréquentation et d'utilisation
-- Cette page "more.html" affiche une analyse détaillée du match avec:
-  * Analyse IA de l'anticipation et probabilité de disponibilité PMR
-  * Comparaison avec d'autres matchs du calendrier
-  * Météo prévue pour le jour du match
-  * Compositions probables des équipes
-  * Historique des détections PMR pour ce match
-
-PUBLIC CIBLE:
-- Personnes en situation de handicap (fauteuil roulant, mobilité réduite)
-- Accompagnants de personnes à mobilité réduite
-- Supporters PSG qui ont besoin d'un accès PMR
-- Communauté qui s'entraide pour obtenir ces places rares
-
-IMPORTANCE DES PLACES PMR:
-- Les places PMR sont limitées (quelques dizaines par match maximum)
-- Pour les gros matchs (Classique, OL, Monaco), la demande est énorme
-- Les places se libèrent souvent au dernier moment (annulations, désistements)
-- Obtenir une place PMR peut prendre des semaines de surveillance
-- C'est un enjeu d'accessibilité et d'inclusion sociale
-
-═══════════════════════════════════════════════════════════════
-MATCH À ANALYSER
-═══════════════════════════════════════════════════════════════
-
-- Équipes: {match_name}
-{f"- Compétition: {competition}" if use_match_data else ""}
-{f"- Date: {date_formatted_fr}" if use_match_data else f"- Contexte temporel: {saison_info}"}
-{f"- Heure: {time_formatted}" if use_match_data else ""}
-- Stade: {lieu if use_match_data else "Parc des Princes"} (capacité ~48 000 places, places PMR très limitées)
-- Contexte: {importance['rivalry']}
-- Importance: {importance_text}
-- Nombre de vérifications effectuées: {match.get('nb_checks', 0)}
-- Statut PMR actuel: {'✅ DISPONIBLE - Le bot a détecté des places PMR !' if match.get('pmr_disponible', False) else '❌ Non disponible - Le bot continue de surveiller'}
-- Historique: Le bot surveille ce match depuis le début, vérifiant régulièrement la disponibilité
-
-INFORMATIONS À GÉNÉRER (section match_info):
-{f"- competition: Utilise '{competition}' (déjà fournie dans les données du match)" if use_match_data else "- competition: Détermine la compétition (Ligue 1, Coupe de France, Ligue des Champions, etc.)"}
-- match_type: Détermine le type de match selon l'adversaire:
-  * "Le Classique" pour PSG vs OM
-  * "Derby" pour PSG vs PARIS FC
-  * "Affiche" pour PSG vs OL, Monaco, etc.
-  * "Match de championnat" pour les autres équipes
-{f"- date_formatted: Utilise '{date_formatted_fr}' (déjà fournie)" if use_match_data else "- date_formatted: Génère une date RÉALISTE et FUTURE pour ce match selon le calendrier de la Ligue 1. La date doit être dans le futur. Format français complet avec jour de la semaine (ex: 'Dimanche 15 Janvier 2025'). IMPORTANT: Génère une date DIFFÉRENTE pour chaque match, pas toujours la même !"}
-{f"- time: Utilise '{time_formatted}' (déjà fournie)" if use_match_data else "- time: Heure du match au format 24h (ex: '21:00'). Les matchs de Ligue 1 sont généralement à 17:00, 19:00, 21:00 ou 15:00. Les Classiques sont souvent à 21:00 (prime time). IMPORTANT: Génère une heure DIFFÉRENTE pour chaque match, pas toujours la même !"}
-
-═══════════════════════════════════════════════════════════════
-CONSIGNES D'ANALYSE DÉTAILLÉE ET CONTEXTUALISÉE
-═══════════════════════════════════════════════════════════════
-
-1. ANALYSE D'ANTICIPATION APPROFONDIE ET CONTEXTUALISÉE:
-   Analyse en profondeur le niveau d'attente pour ce match spécifique "{match_name}" EN TENANT COMPTE:
-   - Du contexte de l'application (surveillance PMR, rareté des places)
-   - De l'importance du match pour les supporters
-   - De la demande spécifique pour les places PMR (différente de la demande générale)
-   - Du fait que les places PMR sont encore plus rares que les places normales
-   
-   {classico_text}
-   {ol_text}
-   {monaco_text}
-   {other_text}
-   
-   IMPORTANT: Adapte ton analyse au CONTEXTE PMR:
-   - Les places PMR ont une demande différente (plus stable, moins impulsive)
-   - Les personnes en situation de handicap planifient souvent longtemps à l'avance
-   - Les gros matchs génèrent une demande PMR encore plus forte (accès rare = très recherché)
-   - Les matchs moins médiatisés peuvent avoir des places PMR plus facilement disponibles
-   
-   - hype_score: niveau d'anticipation supporters (0-100) - Justifie avec des éléments concrets liés au contexte PMR
-   - affluence_prevue: taux de remplissage estimé (0-100) - Base-toi sur l'historique du Parc des Princes
-   - probabilite_pmr: chance qu'une place PMR se libère (0-100) - CONSIDÈRE:
-     * La rareté extrême des places PMR (beaucoup plus rare que places normales)
-     * Le fait que {match.get('nb_checks', 0)} vérifications ont été faites sans résultat (si 0, c'est nouveau)
-     * L'importance du match (gros match = probabilité plus faible)
-     * Le timing (plus on approche du match, plus c'est rare)
-   - analyse: explication TRÈS DÉTAILLÉE (7-10 phrases) incluant:
-     * Contexte du match (rivalité, enjeux, importance) adapté au public PMR
-     * Historique des places PMR pour ce type de match (rareté, difficulté d'obtention)
-     * Facteurs influençant la disponibilité PMR (demande, timing, saison, importance)
-     * Recommandations CONCRÈTES pour l'utilisateur (activer alertes Telegram, surveiller régulièrement, etc.)
-     * Probabilité détaillée avec justification basée sur le contexte PMR
-     * Encouragement et conseils pratiques pour obtenir une place
-     * Mention de l'utilité du bot pour ne pas rater une opportunité
-
-1. ANALYSE D'ANTICIPATION APPROFONDIE:
-   Analyse en profondeur le niveau d'attente pour ce match spécifique "{match_name}".
-   {classico_text}
-   {ol_text}
-   {monaco_text}
-   {other_text}
-   
-   - hype_score: niveau d'anticipation supporters (0-100) - Justifie avec des éléments concrets liés au contexte PMR
-   - affluence_prevue: taux de remplissage estimé (0-100) - Base-toi sur l'historique du Parc des Princes
-   - probabilite_pmr: chance qu'une place PMR se libère (0-100) - CONSIDÈRE:
-     * La rareté extrême des places PMR (beaucoup plus rare que places normales)
-     * Le fait que {match.get('nb_checks', 0)} vérifications ont été faites sans résultat (si 0, c'est nouveau)
-     * L'importance du match (gros match = probabilité plus faible)
-     * Le timing (plus on approche du match, plus c'est rare)
-   - analyse: explication TRÈS DÉTAILLÉE (7-10 phrases) incluant:
-     * Contexte du match (rivalité, enjeux, importance) adapté au public PMR
-     * Historique des places PMR pour ce type de match (rareté, difficulté d'obtention)
-     * Facteurs influençant la disponibilité PMR (demande, timing, saison, importance)
-     * Recommandations CONCRÈTES pour l'utilisateur (activer alertes Telegram, surveiller régulièrement, etc.)
-     * Probabilité détaillée avec justification basée sur le contexte PMR
-     * Encouragement et conseils pratiques pour obtenir une place
-     * Mention de l'utilité du bot pour ne pas rater une opportunité
-
-{comparison_section}
-
-3. MÉTÉO PRÉVUE DÉTAILLÉE:
-   {"IMPORTANT: Utilise les informations EXACTES suivantes pour générer une météo PRÉCISE:" if use_match_data else "Pour le stade à la date que tu auras générée dans match_info.date_formatted:"}
-   {"- Date du match: " + date_formatted_fr if use_match_data else ""}
-   {"- Heure du match: " + time_formatted if use_match_data else ""}
-   {"- Lieu/Stade: " + lieu if use_match_data else "- Stade: Parc des Princes (Paris, France)"}
-   
-   {"Génère une météo RÉALISTE et PRÉCISE pour " + lieu + " le " + date_formatted_fr + " à " + time_formatted + "." if use_match_data else "Génère une météo réaliste pour Paris/France à cette période."}
-   
-   {"CONSIDÈRE:" if use_match_data else "Utilise des données météo réalistes:"}
-   {"- La saison exacte (mois: " + mois_fr.capitalize() + ", jour: " + str(match_date_obj.day) + ")" if use_match_data else "- En janvier: généralement 5-10°C, souvent nuageux, risque de pluie moyen"}
-   {"- L'heure du match (" + time_formatted + ") pour adapter la température (plus frais le soir)" if use_match_data else "- En été: 20-30°C, plutôt ensoleillé"}
-   {"- Le lieu spécifique (" + lieu + ") pour adapter les conditions météo" if use_match_data else "- Adapte selon la saison réelle"}
-   {"- Les conditions météo typiques pour cette date et ce lieu en France" if use_match_data else ""}
-   
-   - temperature: température en °C ({"cohérente avec " + date_formatted_fr + " à " + time_formatted + " à " + lieu if use_match_data else "cohérente avec la date"})
-   - condition: description détaillée et précise ("Ensoleillé avec quelques nuages", "Nuageux avec averses possibles", etc.)
-   - rain_chance: probabilité de pluie (0-100) avec justification basée sur {"la date et le lieu spécifiques" if use_match_data else "la période"}
-   - wind_speed: vitesse vent en km/h (10-20 km/h typique pour {"ce lieu" if use_match_data else "Paris"})
-   - emoji: emoji météo approprié (☀️, 🌤️, ⛅, 🌧️, ⛈️, etc.)
-
-4. COMPOSITIONS PROBABLES DÉTAILLÉES:
-   Génère les compositions RÉALISTES et ACTUELLES (saison 2024-2025):
-   
-   Pour {home_team}:
-   {home_lineup_instruction}
-   - Formation: 4-3-3 (typique) ou autre selon le contexte
-   - Inclus les vrais noms de joueurs actuels
-   
-   Pour {away_team}:
-   {away_lineup_instruction}
-   - Formation: 4-3-3 ou autre selon le contexte
-   - Inclus les vrais noms de joueurs actuels
-
-═══════════════════════════════════════════════════════════════
-INSTRUCTIONS FINALES
-═══════════════════════════════════════════════════════════════
-
-IMPORTANT - RÈGLES STRICTES:
-- Analyse TRÈS DÉTAILLÉE avec justification de chaque score basée sur le CONTEXTE PMR
-- Adapte TOUS les scores et analyses au match spécifique "{match_name}"
-- Ne copie JAMAIS les valeurs d'un autre match
-- Sois cohérent: PSG-OM > PSG-OL > PSG-Monaco > PSG-équipe moyenne (pour la demande PMR)
-- Utilise les vrais effectifs 2024-2025 avec noms réels de joueurs
-- Météo réaliste et détaillée {"pour " + lieu + " le " + date_formatted_fr + " à " + time_formatted if use_match_data else "pour la date générée dans match_info.date_formatted à Paris"}
-- L'analyse textuelle doit faire 7-10 phrases minimum avec détails concrets
-- TON PROFESSIONNEL: Sois empathique, encourageant, et pratique pour les personnes en situation de handicap
-- Mentionne l'utilité du bot de surveillance et des alertes Telegram
-- Sois réaliste sur la rareté des places PMR mais encourageant sur les possibilités
-
-CONTEXTE À GARDER EN TÊTE:
-- Cette analyse sera lue par des personnes qui ont besoin d'une place PMR
-- Elles comptent sur cette analyse pour comprendre leurs chances
-- Le bot les aide à ne pas rater une opportunité
-- C'est un enjeu d'accessibilité et d'inclusion
-
-Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
-""" + json_template
+        # Construire le prompt avec la nouvelle fonction
+        prompt = build_groq_prompt(match_name, match_data, match, comparison_matches)
 
         # Clé API Groq (doit être définie dans les variables d'environnement)
         GROQ_API_KEY = os.getenv("GROQ_API_KEY")
