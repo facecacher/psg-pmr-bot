@@ -548,6 +548,23 @@ def api_add_match():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/matches/<match_name>', methods=['GET'])
+def api_get_match_details(match_name):
+    """Retourne les détails complets d'un match depuis matches.json"""
+    try:
+        matches = charger_matchs()
+        # Décoder le nom du match (peut contenir des caractères spéciaux)
+        from urllib.parse import unquote
+        match_name_decoded = unquote(match_name)
+        match = next((m for m in matches if m.get('nom') == match_name_decoded), None)
+        if match:
+            return jsonify(match)
+        else:
+            return jsonify({"error": "Match non trouvé"}), 404
+    except Exception as e:
+        log(f"❌ Erreur récupération détails match: {e}", 'error')
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/matches/<int:index>', methods=['DELETE'])
 def api_delete_match(index):
     """Supprime un match par son index"""
