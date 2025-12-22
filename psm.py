@@ -1140,7 +1140,7 @@ CONSIGNES D'ANALYSE DÉTAILLÉE ET CONTEXTUALISÉE
 {comparison_section}
 
 3. MÉTÉO PRÉVUE DÉTAILLÉE:
-   Pour Parc des Princes le {date_formatted}:
+   Pour Parc des Princes à la date que tu auras générée dans match_info.date_formatted:
    - Utilise des données météo réalistes pour Paris/France à cette période
    - En janvier: généralement 5-10°C, souvent nuageux, risque de pluie moyen
    - En été: 20-30°C, plutôt ensoleillé
