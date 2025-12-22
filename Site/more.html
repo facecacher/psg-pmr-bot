@@ -879,6 +879,9 @@
                         <span class="font-semibold leading-relaxed">${pos.players.join(', ')}</span>
                     </div>
                 `).join('');
+                console.log('✅ Composition adverse HTML générée et insérée');
+            } else {
+                console.warn('⚠️ Conteneur ou données composition adverse non trouvés');
             }
         }
         
