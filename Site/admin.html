@@ -598,6 +598,29 @@
                 <label class="form-label">URL de la billetterie</label>
                 <input type="text" class="form-input" id="match-url" placeholder="https://billetterie.psg.fr/...">
             </div>
+            <div class="form-group">
+                <label class="form-label">Compétition</label>
+                <select class="form-input" id="match-competition">
+                    <option value="Ligue 1">Ligue 1</option>
+                    <option value="Coupe de France">Coupe de France</option>
+                    <option value="Ligue des Champions">Ligue des Champions</option>
+                    <option value="Ligue Europa">Ligue Europa</option>
+                    <option value="Trophée des Champions">Trophée des Champions</option>
+                    <option value="Amical">Amical</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Date du match</label>
+                <input type="date" class="form-input" id="match-date">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Heure du match</label>
+                <input type="time" class="form-input" id="match-time" value="21:00">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Lieu (Stade)</label>
+                <input type="text" class="form-input" id="match-lieu" placeholder="Parc des Princes" value="Parc des Princes">
+            </div>
             <div style="display: flex; gap: 12px;">
                 <button class="btn" onclick="addMatch()">Ajouter</button>
                 <button class="btn-sm" style="flex: 1;" onclick="closeAddMatchModal()">Annuler</button>

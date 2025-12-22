@@ -879,6 +879,10 @@ def api_groq_analyze():
         if not match:
             return jsonify({"error": "Match non trouvé"}), 404
         
+        # Charger les données complètes du match depuis matches.json
+        matches_list = charger_matchs()
+        match_data = next((m for m in matches_list if m.get('nom') == match_name), None)
+        
         # Extraire les équipes
         teams = extract_teams_from_match_name(match_name)
         home_team = teams['home']
@@ -890,10 +894,23 @@ def api_groq_analyze():
         # Récupérer les VRAIS matchs de comparaison depuis matches.json
         comparison_matches = get_comparison_matches(match_name, home_team, limit=3)
         
-        # Ne pas utiliser datetime.now() - laisser Groq générer une date réaliste
-        # On donne juste le contexte de la saison actuelle pour que Groq génère une date cohérente
-        current_date = datetime.now()
-        saison_info = f"Saison 2024-2025, nous sommes actuellement en {MOIS_FR[current_date.month].capitalize()} {current_date.year}"
+        # Utiliser les données du match si disponibles, sinon laisser Groq générer
+        if match_data and match_data.get('date') and match_data.get('time'):
+            # Formater la date depuis le format ISO (YYYY-MM-DD)
+            match_date_obj = datetime.strptime(match_data['date'], '%Y-%m-%d')
+            jours_semaine = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+            jour_semaine = jours_semaine[match_date_obj.weekday()]
+            mois_fr = MOIS_FR[match_date_obj.month]
+            date_formatted_fr = f"{jour_semaine} {match_date_obj.day} {mois_fr.capitalize()} {match_date_obj.year}"
+            time_formatted = match_data.get('time', '21:00')
+            competition = match_data.get('competition', 'Ligue 1')
+            lieu = match_data.get('lieu', 'Parc des Princes')
+            use_match_data = True
+        else:
+            # Pas de données, laisser Groq générer
+            current_date = datetime.now()
+            saison_info = f"Saison 2024-2025, nous sommes actuellement en {MOIS_FR[current_date.month].capitalize()} {current_date.year}"
+            use_match_data = False
         
         # Construire la section comparaison
         if comparison_matches:
@@ -1059,22 +1076,14 @@ MATCH À ANALYSER
 - Historique: Le bot surveille ce match depuis le début, vérifiant régulièrement la disponibilité
 
 INFORMATIONS À GÉNÉRER (section match_info):
-- competition: Détermine la compétition (Ligue 1, Coupe de France, Ligue des Champions, etc.)
+{f"- competition: Utilise '{competition}' (déjà fournie)" if use_match_data else "- competition: Détermine la compétition (Ligue 1, Coupe de France, Ligue des Champions, etc.)"}
 - match_type: Détermine le type de match selon l'adversaire:
   * "Le Classique" pour PSG vs OM
   * "Derby" pour PSG vs PARIS FC
   * "Affiche" pour PSG vs OL, Monaco, etc.
   * "Match de championnat" pour les autres équipes
-- date_formatted: Génère une date RÉALISTE et FUTURE pour ce match selon le calendrier de la Ligue 1.
-  * La date doit être dans le futur (pas aujourd'hui ni dans le passé)
-  * Format français complet avec jour de la semaine (ex: "Dimanche 15 Janvier 2025")
-  * Les matchs de Ligue 1 ont généralement lieu le weekend (samedi/dimanche) ou en semaine (mercredi)
-  * Adapte la date selon l'importance du match (Classique souvent en weekend prime time)
-  * IMPORTANT: Génère une date DIFFÉRENTE pour chaque match, pas toujours la même !
-- time: Heure du match au format 24h (ex: "21:00")
-  * Les matchs de Ligue 1 sont généralement à 17:00, 19:00, 21:00 ou 15:00
-  * Les Classiques sont souvent à 21:00 (prime time)
-  * IMPORTANT: Génère une heure DIFFÉRENTE pour chaque match, pas toujours la même !
+{f"- date_formatted: Utilise '{date_formatted_fr}' (déjà fournie)" if use_match_data else "- date_formatted: Génère une date RÉALISTE et FUTURE pour ce match selon le calendrier de la Ligue 1. La date doit être dans le futur. Format français complet avec jour de la semaine (ex: 'Dimanche 15 Janvier 2025'). IMPORTANT: Génère une date DIFFÉRENTE pour chaque match, pas toujours la même !"}
+{f"- time: Utilise '{time_formatted}' (déjà fournie)" if use_match_data else "- time: Heure du match au format 24h (ex: '21:00'). Les matchs de Ligue 1 sont généralement à 17:00, 19:00, 21:00 ou 15:00. Les Classiques sont souvent à 21:00 (prime time). IMPORTANT: Génère une heure DIFFÉRENTE pour chaque match, pas toujours la même !"}
 
 ═══════════════════════════════════════════════════════════════
 CONSIGNES D'ANALYSE DÉTAILLÉE ET CONTEXTUALISÉE
