@@ -1097,15 +1097,21 @@ CONSIGNES D'ANALYSE DÉTAILLÉE ET CONTEXTUALISÉE
    {monaco_text}
    {other_text}
    
-   - hype_score: niveau d'anticipation supporters (0-100) - Justifie avec des éléments concrets
+   - hype_score: niveau d'anticipation supporters (0-100) - Justifie avec des éléments concrets liés au contexte PMR
    - affluence_prevue: taux de remplissage estimé (0-100) - Base-toi sur l'historique du Parc des Princes
-   - probabilite_pmr: chance qu'une place PMR se libère (0-100) - Considère la rareté des places PMR
-   - analyse: explication DÉTAILLÉE (5-7 phrases) incluant:
-     * Contexte du match (rivalité, enjeux, importance)
-     * Historique des places PMR pour ce type de match
-     * Facteurs influençant la disponibilité (demande, timing, saison)
-     * Recommandations concrètes pour l'utilisateur
-     * Probabilité détaillée avec justification
+   - probabilite_pmr: chance qu'une place PMR se libère (0-100) - CONSIDÈRE:
+     * La rareté extrême des places PMR (beaucoup plus rare que places normales)
+     * Le fait que {match.get('nb_checks', 0)} vérifications ont été faites sans résultat (si 0, c'est nouveau)
+     * L'importance du match (gros match = probabilité plus faible)
+     * Le timing (plus on approche du match, plus c'est rare)
+   - analyse: explication TRÈS DÉTAILLÉE (7-10 phrases) incluant:
+     * Contexte du match (rivalité, enjeux, importance) adapté au public PMR
+     * Historique des places PMR pour ce type de match (rareté, difficulté d'obtention)
+     * Facteurs influençant la disponibilité PMR (demande, timing, saison, importance)
+     * Recommandations CONCRÈTES pour l'utilisateur (activer alertes Telegram, surveiller régulièrement, etc.)
+     * Probabilité détaillée avec justification basée sur le contexte PMR
+     * Encouragement et conseils pratiques pour obtenir une place
+     * Mention de l'utilité du bot pour ne pas rater une opportunité
 
 {comparison_section}
 
