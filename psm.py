@@ -1064,6 +1064,16 @@ MATCH À ANALYSER
 - Statut PMR actuel: {'✅ DISPONIBLE - Le bot a détecté des places PMR !' if match.get('pmr_disponible', False) else '❌ Non disponible - Le bot continue de surveiller'}
 - Historique: Le bot surveille ce match depuis le début, vérifiant régulièrement la disponibilité
 
+INFORMATIONS À GÉNÉRER (section match_info):
+- competition: Détermine la compétition (Ligue 1, Coupe de France, Ligue des Champions, etc.)
+- match_type: Détermine le type de match selon l'adversaire:
+  * "Le Classique" pour PSG vs OM
+  * "Derby" pour PSG vs PARIS FC
+  * "Affiche" pour PSG vs OL, Monaco, etc.
+  * "Match de championnat" pour les autres équipes
+- date_formatted: Format français complet avec jour de la semaine (ex: "Dimanche 15 Janvier 2025")
+- time: Heure du match au format 24h (ex: "21:00")
+
 ═══════════════════════════════════════════════════════════════
 CONSIGNES D'ANALYSE DÉTAILLÉE ET CONTEXTUALISÉE
 ═══════════════════════════════════════════════════════════════
