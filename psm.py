@@ -1386,6 +1386,7 @@ def start_web_server():
             try:
                 # Construire l'URL Flask
                 flask_url = f'http://localhost:5000{self.path}'
+                log(f"🔄 Proxy: {method} {self.path} → {flask_url}", 'info')
                 
                 # Préparer la requête
                 req_data = None
@@ -1403,9 +1404,11 @@ def start_web_server():
                         req.add_header(header, value)
                 
                 # Faire la requête
-                with urllib.request.urlopen(req, timeout=10) as response:
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    status_code = response.getcode()
+                    log(f"✅ Proxy réponse: {status_code} pour {self.path}", 'info')
                     # Envoyer la réponse
-                    self.send_response(response.getcode())
+                    self.send_response(status_code)
                     # Copier les headers de Flask SAUF les headers CORS (on les gère nous-mêmes)
                     for header, value in response.headers.items():
                         header_lower = header.lower()
@@ -1419,8 +1422,29 @@ def start_web_server():
                     self.end_headers()
                     self.wfile.write(response.read())
                     
+            except urllib.error.HTTPError as e:
+                log(f"❌ Erreur HTTP proxy Flask: {e.code} {e.reason} pour {self.path}", 'error')
+                self.send_response(e.code)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                try:
+                    error_body = e.read().decode('utf-8')
+                    log(f"📄 Corps erreur HTTP: {error_body[:500]}", 'error')
+                    self.wfile.write(error_body.encode('utf-8'))
+                except:
+                    error_msg = json.dumps({"error": f"Proxy HTTP error: {e.code} {e.reason}"})
+                    self.wfile.write(error_msg.encode('utf-8'))
+            except urllib.error.URLError as e:
+                log(f"❌ Erreur URL proxy Flask: {e.reason} pour {self.path}", 'error')
+                self.send_response(502)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                error_msg = json.dumps({"error": f"Proxy URL error: {str(e)}"})
+                self.wfile.write(error_msg.encode('utf-8'))
             except Exception as e:
-                print(f"❌ Erreur proxy Flask: {e}")
+                log(f"❌ Erreur proxy Flask: {type(e).__name__}: {e} pour {self.path}", 'error')
+                import traceback
+                log(f"📋 Traceback: {traceback.format_exc()}", 'error')
                 self.send_response(502)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
