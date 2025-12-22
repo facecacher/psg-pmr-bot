@@ -991,19 +991,104 @@ def api_groq_analyze():
 }}"""
         
         # Construire le prompt complet en concaténant les parties
-        prompt = f"""Tu es un expert en football français, météorologie et analyse de données sportives.
+        prompt = f"""Tu es un expert en football français, météorologie, analyse de données sportives ET accessibilité pour personnes à mobilité réduite.
 
-MATCH À ANALYSER:
+═══════════════════════════════════════════════════════════════
+CONTEXTE DE L'APPLICATION ET DU SITE WEB
+═══════════════════════════════════════════════════════════════
+
+Cette analyse est générée pour un site web dédié à la surveillance des places PMR (Personnes à Mobilité Réduite) pour les matchs du PSG au Parc des Princes.
+
+PROBLÈME RÉSOLU PAR L'APPLICATION:
+- Les places PMR au Parc des Princes sont EXTÊMEMENT rares et difficiles à obtenir
+- La billetterie PSG met ces places en vente de manière aléatoire et imprévisible
+- Les places partent en quelques minutes, parfois secondes
+- Les personnes en situation de handicap doivent surveiller la billetterie 24/7 pour ne pas rater une opportunité
+- C'est un vrai parcours du combattant pour obtenir une place PMR
+
+FONCTIONNEMENT DU BOT:
+- Un bot automatisé surveille la billetterie PSG en continu (toutes les ~90 secondes)
+- Il détecte automatiquement quand des places PMR se libèrent
+- Il envoie une alerte Telegram instantanée dès qu'une place est disponible
+- Le bot a déjà effectué {match.get('nb_checks', 0)} vérifications pour ce match
+- Statut actuel: {'✅ Places PMR DISPONIBLES' if match.get('pmr_disponible', False) else '❌ Aucune place PMR disponible pour le moment'}
+
+LE SITE WEB:
+- Site public accessible à tous pour voir l'état de la surveillance en temps réel
+- Affiche pour chaque match: disponibilité PMR, nombre de vérifications, dernier check
+- Interface admin pour gérer les matchs surveillés
+- Analytics de fréquentation et d'utilisation
+- Cette page "more.html" affiche une analyse détaillée du match avec:
+  * Analyse IA de l'anticipation et probabilité de disponibilité PMR
+  * Comparaison avec d'autres matchs du calendrier
+  * Météo prévue pour le jour du match
+  * Compositions probables des équipes
+  * Historique des détections PMR pour ce match
+
+PUBLIC CIBLE:
+- Personnes en situation de handicap (fauteuil roulant, mobilité réduite)
+- Accompagnants de personnes à mobilité réduite
+- Supporters PSG qui ont besoin d'un accès PMR
+- Communauté qui s'entraide pour obtenir ces places rares
+
+IMPORTANCE DES PLACES PMR:
+- Les places PMR sont limitées (quelques dizaines par match maximum)
+- Pour les gros matchs (Classique, OL, Monaco), la demande est énorme
+- Les places se libèrent souvent au dernier moment (annulations, désistements)
+- Obtenir une place PMR peut prendre des semaines de surveillance
+- C'est un enjeu d'accessibilité et d'inclusion sociale
+
+═══════════════════════════════════════════════════════════════
+MATCH À ANALYSER
+═══════════════════════════════════════════════════════════════
+
 - Équipes: {match_name}
 - Compétition: Ligue 1
 - Date: {date_formatted}
-- Stade: Parc des Princes
+- Stade: Parc des Princes (capacité ~48 000 places, places PMR très limitées)
 - Contexte: {importance['rivalry']}
 - Importance: {importance_text}
-- Nombre de vérifications: {match.get('nb_checks', 0)}
-- Statut PMR actuel: {'Disponible' if match.get('pmr_disponible', False) else 'Non disponible'}
+- Nombre de vérifications effectuées: {match.get('nb_checks', 0)}
+- Statut PMR actuel: {'✅ DISPONIBLE - Le bot a détecté des places PMR !' if match.get('pmr_disponible', False) else '❌ Non disponible - Le bot continue de surveiller'}
+- Historique: Le bot surveille ce match depuis le début, vérifiant régulièrement la disponibilité
 
-CONSIGNES D'ANALYSE DÉTAILLÉE:
+═══════════════════════════════════════════════════════════════
+CONSIGNES D'ANALYSE DÉTAILLÉE ET CONTEXTUALISÉE
+═══════════════════════════════════════════════════════════════
+
+1. ANALYSE D'ANTICIPATION APPROFONDIE ET CONTEXTUALISÉE:
+   Analyse en profondeur le niveau d'attente pour ce match spécifique "{match_name}" EN TENANT COMPTE:
+   - Du contexte de l'application (surveillance PMR, rareté des places)
+   - De l'importance du match pour les supporters
+   - De la demande spécifique pour les places PMR (différente de la demande générale)
+   - Du fait que les places PMR sont encore plus rares que les places normales
+   
+   {classico_text}
+   {ol_text}
+   {monaco_text}
+   {other_text}
+   
+   IMPORTANT: Adapte ton analyse au CONTEXTE PMR:
+   - Les places PMR ont une demande différente (plus stable, moins impulsive)
+   - Les personnes en situation de handicap planifient souvent longtemps à l'avance
+   - Les gros matchs génèrent une demande PMR encore plus forte (accès rare = très recherché)
+   - Les matchs moins médiatisés peuvent avoir des places PMR plus facilement disponibles
+   
+   - hype_score: niveau d'anticipation supporters (0-100) - Justifie avec des éléments concrets liés au contexte PMR
+   - affluence_prevue: taux de remplissage estimé (0-100) - Base-toi sur l'historique du Parc des Princes
+   - probabilite_pmr: chance qu'une place PMR se libère (0-100) - CONSIDÈRE:
+     * La rareté extrême des places PMR (beaucoup plus rare que places normales)
+     * Le fait que {match.get('nb_checks', 0)} vérifications ont été faites sans résultat (si 0, c'est nouveau)
+     * L'importance du match (gros match = probabilité plus faible)
+     * Le timing (plus on approche du match, plus c'est rare)
+   - analyse: explication TRÈS DÉTAILLÉE (7-10 phrases) incluant:
+     * Contexte du match (rivalité, enjeux, importance) adapté au public PMR
+     * Historique des places PMR pour ce type de match (rareté, difficulté d'obtention)
+     * Facteurs influençant la disponibilité PMR (demande, timing, saison, importance)
+     * Recommandations CONCRÈTES pour l'utilisateur (activer alertes Telegram, surveiller régulièrement, etc.)
+     * Probabilité détaillée avec justification basée sur le contexte PMR
+     * Encouragement et conseils pratiques pour obtenir une place
+     * Mention de l'utilité du bot pour ne pas rater une opportunité
 
 1. ANALYSE D'ANTICIPATION APPROFONDIE:
    Analyse en profondeur le niveau d'attente pour ce match spécifique "{match_name}".
