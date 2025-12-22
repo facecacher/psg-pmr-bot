@@ -554,28 +554,45 @@
                 
                 // 1. Mettre à jour l'analyse IA
                 if (data.analysis) {
+                    // Mettre à jour le score de hype principal (le gros pourcentage)
                     const hypeLevel = document.querySelector('.text-7xl.gradient-text');
                     if (hypeLevel) {
                         hypeLevel.textContent = `${data.analysis.hype_score}%`;
+                        console.log('✅ Score hype mis à jour:', data.analysis.hype_score);
+                    } else {
+                        console.warn('⚠️ Élément .text-7xl.gradient-text non trouvé');
                     }
                     
+                    // Mettre à jour les cartes de statistiques
                     const statCards = document.querySelectorAll('.stat-card.p-6.rounded-2xl');
-                    if (statCards.length >= 2) {
-                        const hypeLabelCard = statCards[1];
+                    console.log('📊 Nombre de cartes trouvées:', statCards.length);
+                    
+                    // Carte 0 : Label "Très élevé/Élevé" (Hype social)
+                    if (statCards.length >= 1) {
+                        const hypeLabelCard = statCards[0];
                         const hypeLabel = hypeLabelCard.querySelector('.text-2xl.font-bold');
                         if (hypeLabel) {
                             const score = data.analysis.hype_score;
                             const label = score >= 90 ? 'Très élevé' : score >= 75 ? 'Élevé' : score >= 60 ? 'Moyen' : 'Faible';
                             hypeLabel.textContent = label;
+                            console.log('✅ Label hype mis à jour:', label);
+                        } else {
+                            console.warn('⚠️ Élément .text-2xl.font-bold non trouvé dans statCards[0]');
                         }
                     }
                     
-                    if (statCards.length >= 3) {
-                        const affluenceCard = statCards[2];
+                    // Carte 1 : Affluence prévue
+                    if (statCards.length >= 2) {
+                        const affluenceCard = statCards[1];
                         const affluenceEl = affluenceCard.querySelector('.text-2xl.font-bold');
                         if (affluenceEl) {
                             affluenceEl.textContent = `${data.analysis.affluence_prevue}%`;
+                            console.log('✅ Affluence mise à jour:', data.analysis.affluence_prevue);
+                        } else {
+                            console.warn('⚠️ Élément .text-2xl.font-bold non trouvé dans statCards[1]');
                         }
+                    } else {
+                        console.warn('⚠️ Pas assez de cartes trouvées (besoin de 2, trouvé:', statCards.length);
                     }
                     
                     const analyseText = document.querySelector('.text-gray-300.leading-relaxed');
