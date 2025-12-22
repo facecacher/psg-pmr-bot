@@ -890,9 +890,14 @@ def api_groq_analyze():
         # Récupérer les VRAIS matchs de comparaison depuis matches.json
         comparison_matches = get_comparison_matches(match_name, home_team, limit=3)
         
-        # Date du match (utiliser date actuelle)
+        # Date du match (utiliser date actuelle ou depuis match si disponible)
         match_date = datetime.now()
-        date_formatted = match_date.strftime("%d %B %Y")
+        # Formater la date en français avec jour de la semaine
+        jours_semaine = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+        jour_semaine = jours_semaine[match_date.weekday()]
+        mois_fr = MOIS_FR[match_date.month]
+        date_formatted_fr = f"{jour_semaine} {match_date.day} {mois_fr.capitalize()} {match_date.year}"
+        time_formatted = match_date.strftime("%H:%M")
         
         # Construire la section comparaison
         if comparison_matches:

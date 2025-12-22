@@ -117,8 +117,8 @@
         <div class="mb-10 slide-in">
             <div class="flex items-center justify-between mb-8">
                 <div class="flex items-center gap-3">
-                    <span class="glass px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">Ligue 1</span>
-                    <span class="glass px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider text-red-400 border-red-500/30">Le Classique</span>
+                    <span class="glass px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider" id="match-competition">Ligue 1</span>
+                    <span class="glass px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider text-red-400 border-red-500/30" id="match-type">Le Classique</span>
                 </div>
                 <div class="flex items-center gap-2 pulse">
                     <div class="w-2 h-2 bg-green-400 rounded-full"></div>
@@ -139,14 +139,14 @@
                             <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                             </svg>
-                            <span>Dimanche 15 Janvier 2025</span>
+                            <span id="match-date">Dimanche 15 Janvier 2025</span>
                         </div>
                         <span class="text-gray-700">•</span>
                         <div class="flex items-center gap-2">
                             <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
-                            <span>21:00</span>
+                            <span id="match-time">21:00</span>
                         </div>
                         <span class="text-gray-700">•</span>
                         <div class="flex items-center gap-2">
@@ -630,6 +630,11 @@
                 if (data.lineups) {
                     const teams = match.nom.split(' vs ');
                     updateLineups(data.lineups, teams[0], teams[1] || 'Adversaire');
+                }
+                
+                // Mettre à jour les informations du match (compétition, type, date, heure)
+                if (data.match_info) {
+                    updateMatchInfo(data.match_info);
                 }
                 
                 console.log('✅ Analyse Groq mise à jour avec succès');
