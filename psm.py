@@ -1205,7 +1205,7 @@ IMPORTANT - RÈGLES STRICTES:
 - Ne copie JAMAIS les valeurs d'un autre match
 - Sois cohérent: PSG-OM > PSG-OL > PSG-Monaco > PSG-équipe moyenne (pour la demande PMR)
 - Utilise les vrais effectifs 2024-2025 avec noms réels de joueurs
-- Météo réaliste et détaillée pour la date générée dans match_info.date_formatted à Paris
+- Météo réaliste et détaillée {"pour " + lieu + " le " + date_formatted_fr + " à " + time_formatted if use_match_data else "pour la date générée dans match_info.date_formatted à Paris"}
 - L'analyse textuelle doit faire 7-10 phrases minimum avec détails concrets
 - TON PROFESSIONNEL: Sois empathique, encourageant, et pratique pour les personnes en situation de handicap
 - Mentionne l'utilité du bot de surveillance et des alertes Telegram
