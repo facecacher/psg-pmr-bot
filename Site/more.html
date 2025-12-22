@@ -528,14 +528,21 @@
         // Charger l'analyse Groq complète
         async function chargerAnalyseGroq(match) {
             try {
-                const response = await fetch(`${BOT_URL}/api/groq/analyze?match=${encodeURIComponent(match.nom)}`);
+                console.log('📡 Appel API Groq pour:', match.nom);
+                const url = `${BOT_URL}/api/groq/analyze?match=${encodeURIComponent(match.nom)}`;
+                console.log('🔗 URL:', url);
+                
+                const response = await fetch(url);
                 
                 if (!response.ok) {
-                    console.error('Erreur HTTP analyse Groq:', response.status);
+                    console.error('❌ Erreur HTTP analyse Groq:', response.status, response.statusText);
+                    const errorText = await response.text();
+                    console.error('📄 Réponse erreur:', errorText);
                     return;
                 }
                 
                 const data = await response.json();
+                console.log('✅ Données Groq reçues:', data);
                 
                 // Vérifier si c'est une erreur (string) ou des données avec error: true (fallback)
                 if (data.error && typeof data.error === 'string') {
@@ -600,8 +607,11 @@
                     updateLineups(data.lineups, teams[0], teams[1] || 'Adversaire');
                 }
                 
+                console.log('✅ Analyse Groq mise à jour avec succès');
+                
             } catch (error) {
-                console.error('Erreur chargement analyse Groq:', error);
+                console.error('❌ Erreur chargement analyse Groq:', error);
+                console.error('📋 Détails:', error.message, error.stack);
             }
         }
         
@@ -921,6 +931,8 @@
         console.log('🚀 Initialisation de more.html');
         console.log('📝 Match recherché:', matchName);
         
+        let reloadIntervalId = null;
+        
         chargerDonneesMatch().then(() => {
             if (currentMatch) {
                 console.log('📊 Mise à jour du graphique');
@@ -935,7 +947,12 @@
         });
         
         // Recharger les données toutes les 10 secondes (sans l'analyse Groq)
-        setInterval(() => {
+        // Nettoyer l'intervalle précédent si la page est rechargée
+        if (reloadIntervalId) {
+            clearInterval(reloadIntervalId);
+        }
+        reloadIntervalId = setInterval(() => {
+            console.log('🔄 Rechargement périodique des données (sans Groq)');
             chargerDonneesMatch(false);
         }, 10000);
     </script>
