@@ -481,8 +481,8 @@
                 const container = document.getElementById('matches-container');
                 container.innerHTML = ''; // Vider le conteneur
                 
-                // Créer une card pour chaque match
-                data.matchs.forEach(async (match) => {
+                // Créer une card pour chaque match (avec chargement asynchrone de la compétition)
+                const matchPromises = data.matchs.map(async (match) => {
                     // Charger les détails complets du match pour avoir la compétition
                     let competition = 'Ligue 1'; // Valeur par défaut
                     try {
@@ -546,6 +546,9 @@
                     
                     container.appendChild(card);
                 });
+                
+                // Attendre que toutes les promesses soient résolues
+                await Promise.all(matchPromises);
                 
                 // Mettre à jour le footer
                 const footerTime = document.querySelector('.footer-time');
