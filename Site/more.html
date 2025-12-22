@@ -210,7 +210,7 @@
                         <div class="flex items-start gap-4">
                             <div class="text-4xl">🤖</div>
                             <div>
-                                <div class="font-bold text-cyan-300 mb-2 text-lg">Analyse IA Claude</div>
+                                <div class="font-bold text-cyan-300 mb-2 text-lg">Analyse IA</div>
                                 <p class="text-gray-300 leading-relaxed">
                                     Le Classique PSG-OM est l'affiche la plus attendue de Ligue 1. Avec un taux d'anticipation de 94% et une affluence prévue de 98%, la demande est exceptionnelle. Historique : seulement 3 places PMR libérées sur les 6 derniers Classiques. <span class="text-white font-semibold">Probabilité de disponibilité : 12%</span>. Recommandation : activer alertes Telegram.
                                 </p>
@@ -273,53 +273,10 @@
                 <!-- Historique détections -->
                 <div class="glass rounded-3xl p-8 slide-in" style="animation-delay: 0.4s">
                     <h2 class="text-2xl font-black mb-6">Historique des détections</h2>
-                    <div class="space-y-3">
-                        <div class="glass p-5 rounded-xl border-l-4 border-green-400">
-                            <div class="flex justify-between items-start mb-2">
-                                <div class="flex items-center gap-3">
-                                    <span class="text-2xl">✅</span>
-                                    <div>
-                                        <div class="font-bold">Place PMR détectée</div>
-                                        <div class="text-sm text-gray-400">Catégorie 3 - Tribune Auteuil</div>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-sm font-semibold">12/01/2025</div>
-                                    <div class="text-xs text-gray-400">14:32</div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="glass p-5 rounded-xl border-l-4 border-green-400">
-                            <div class="flex justify-between items-start mb-2">
-                                <div class="flex items-center gap-3">
-                                    <span class="text-2xl">✅</span>
-                                    <div>
-                                        <div class="font-bold">Place PMR détectée</div>
-                                        <div class="text-sm text-gray-400">Catégorie 2 - Tribune Boulogne</div>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-sm font-semibold">10/01/2025</div>
-                                    <div class="text-xs text-gray-400">09:15</div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="glass p-5 rounded-xl border-l-4 border-green-400">
-                            <div class="flex justify-between items-start mb-2">
-                                <div class="flex items-center gap-3">
-                                    <span class="text-2xl">✅</span>
-                                    <div>
-                                        <div class="font-bold">Place PMR détectée</div>
-                                        <div class="text-sm text-gray-400">Catégorie 1 - Tribune Présidentielle</div>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-sm font-semibold">08/01/2025</div>
-                                    <div class="text-xs text-gray-400">19:47</div>
-                                </div>
-                            </div>
+                    <div id="detections-history" class="space-y-3">
+                        <div class="text-center text-gray-400 py-8">
+                            <div class="text-4xl mb-2">⏳</div>
+                            <div>Chargement de l'historique...</div>
                         </div>
                     </div>
                 </div>
@@ -428,7 +385,7 @@
             <p class="text-gray-400 mb-6 max-w-2xl mx-auto">
                 Notification Telegram en temps réel dès qu'une place PMR se libère pour ce match
             </p>
-            <a href="https://t.me/votre_bot" target="_blank" class="inline-flex items-center gap-3 bg-gradient-to-r from-cyan-500 to-green-500 hover:from-cyan-600 hover:to-green-600 text-black font-black px-10 py-5 rounded-xl transition-all transform hover:scale-105 text-lg">
+            <a href="https://t.me/+yrZlOGj5wf4yMjg0" target="_blank" class="inline-flex items-center gap-3 bg-gradient-to-r from-cyan-500 to-green-500 hover:from-cyan-600 hover:to-green-600 text-black font-black px-10 py-5 rounded-xl transition-all transform hover:scale-105 text-lg">
                 <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z"/>
                 </svg>
@@ -482,6 +439,9 @@
                 
                 console.log('✅ Match trouvé:', match);
                 currentMatch = match;
+                
+                // Charger l'historique des détections
+                chargerHistoriqueDetections(match.nom);
                 
                 // Mettre à jour le titre
                 const titleParts = match.nom.split(' vs ');
@@ -642,6 +602,70 @@
                 
             } catch (error) {
                 console.error('Erreur chargement analyse Groq:', error);
+            }
+        }
+        
+        // Charger l'historique des détections PMR
+        async function chargerHistoriqueDetections(matchNom) {
+            try {
+                const response = await fetch(`${BOT_URL}/api/detections-history?match=${encodeURIComponent(matchNom)}`);
+                if (!response.ok) {
+                    console.error('Erreur chargement historique:', response.status);
+                    return;
+                }
+                
+                const historique = await response.json();
+                const container = document.getElementById('detections-history');
+                
+                if (!container) return;
+                
+                if (historique.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center text-gray-400 py-8">
+                            <div class="text-4xl mb-2">📭</div>
+                            <div>Aucune détection PMR enregistrée pour ce match</div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Trier par date (plus récent en premier)
+                historique.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                container.innerHTML = historique.map(detection => {
+                    const date = new Date(detection.date);
+                    const dateStr = date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    const timeStr = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                    
+                    return `
+                        <div class="glass p-5 rounded-xl border-l-4 border-green-400">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-2xl">✅</span>
+                                    <div>
+                                        <div class="font-bold">Place${detection.nb_places > 1 ? 's' : ''} PMR détectée${detection.nb_places > 1 ? 's' : ''}</div>
+                                        <div class="text-sm text-gray-400">${detection.nb_places} place${detection.nb_places > 1 ? 's' : ''} disponible${detection.nb_places > 1 ? 's' : ''}</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-semibold">${dateStr}</div>
+                                    <div class="text-xs text-gray-400">${timeStr}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Erreur chargement historique détections:', error);
+                const container = document.getElementById('detections-history');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="text-center text-red-400 py-8">
+                            <div class="text-4xl mb-2">❌</div>
+                            <div>Erreur lors du chargement de l'historique</div>
+                        </div>
+                    `;
+                }
             }
         }
         

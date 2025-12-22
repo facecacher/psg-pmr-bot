@@ -43,6 +43,41 @@ except:
     except:
         pass  # Si la locale n'est pas disponible, on utilisera une fonction de remplacement
 
+# ====================
+# HISTORIQUE DES DÉTECTIONS PMR
+# ====================
+DETECTIONS_HISTORY_FILE = 'detections_history.json'
+
+def charger_historique_detections():
+    """Charge l'historique des détections PMR"""
+    try:
+        if os.path.exists(DETECTIONS_HISTORY_FILE):
+            with open(DETECTIONS_HISTORY_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        log(f"⚠️ Erreur chargement historique: {e}", 'warning')
+    return []
+
+def sauvegarder_detection(match_nom, nb_places):
+    """Sauvegarde une détection PMR dans l'historique"""
+    try:
+        historique = charger_historique_detections()
+        detection = {
+            "match": match_nom,
+            "nb_places": nb_places,
+            "date": datetime.now().isoformat(),
+            "date_formatee": formater_date_francaise(datetime.now())
+        }
+        historique.append(detection)
+        # Garder seulement les 50 dernières détections
+        if len(historique) > 50:
+            historique = historique[-50:]
+        
+        with open(DETECTIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(historique, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        log(f"⚠️ Erreur sauvegarde détection: {e}", 'warning')
+
 # Charger les matchs depuis le fichier JSON
 def charger_matchs():
     try:
@@ -368,6 +403,10 @@ def verifier_match(match):
 
             pmr_elements = page.query_selector_all('div[data-offer-type="PMR"]')
             log(f"{nom} → PMR trouvées : {len(pmr_elements)}", 'info')
+            
+            # Sauvegarder la détection si des PMR sont trouvées
+            if len(pmr_elements) > 0:
+                sauvegarder_detection(nom, len(pmr_elements))
 
             # Mettre à jour les statistiques
             nb_checks_par_match[nom] = nb_checks_par_match.get(nom, 0) + 1
@@ -748,6 +787,20 @@ def api_track_visitor():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/detections-history', methods=['GET'])
+def api_get_detections_history():
+    """Retourne l'historique des détections PMR"""
+    try:
+        historique = charger_historique_detections()
+        # Filtrer par match si spécifié
+        match_filter = request.args.get('match')
+        if match_filter:
+            historique = [d for d in historique if match_filter.lower() in d.get('match', '').lower()]
+        return jsonify(historique)
+    except Exception as e:
+        log(f"❌ Erreur récupération historique: {e}", 'error')
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/analytics/telegram-click', methods=['POST'])
 def api_track_telegram_click():
     """Enregistre un clic sur le bouton Telegram"""
@@ -947,24 +1000,31 @@ MATCH À ANALYSER:
 - Stade: Parc des Princes
 - Contexte: {importance['rivalry']}
 - Importance: {importance_text}
+- Nombre de vérifications: {match.get('nb_checks', 0)}
+- Statut PMR actuel: {'Disponible' if match.get('pmr_disponible', False) else 'Non disponible'}
 
-CONSIGNES D'ANALYSE:
+CONSIGNES D'ANALYSE DÉTAILLÉE:
 
-1. ANALYSE D'ANTICIPATION:
-   Analyse le niveau d'attente pour ce match spécifique "{match_name}".
+1. ANALYSE D'ANTICIPATION APPROFONDIE:
+   Analyse en profondeur le niveau d'attente pour ce match spécifique "{match_name}".
    {classico_text}
    {ol_text}
    {monaco_text}
    {other_text}
    
-   - hype_score: niveau d'anticipation supporters (0-100)
-   - affluence_prevue: taux de remplissage estimé (0-100, base Parc des Princes = 90%+ pour gros matchs)
-   - probabilite_pmr: chance qu'une place PMR se libère (0-100, faible pour gros matchs)
-   - analyse: explication courte (2-3 phrases) adaptée à CE match précis
+   - hype_score: niveau d'anticipation supporters (0-100) - Justifie avec des éléments concrets
+   - affluence_prevue: taux de remplissage estimé (0-100) - Base-toi sur l'historique du Parc des Princes
+   - probabilite_pmr: chance qu'une place PMR se libère (0-100) - Considère la rareté des places PMR
+   - analyse: explication DÉTAILLÉE (5-7 phrases) incluant:
+     * Contexte du match (rivalité, enjeux, importance)
+     * Historique des places PMR pour ce type de match
+     * Facteurs influençant la disponibilité (demande, timing, saison)
+     * Recommandations concrètes pour l'utilisateur
+     * Probabilité détaillée avec justification
 
 {comparison_section}
 
-3. MÉTÉO PRÉVUE:
+3. MÉTÉO PRÉVUE DÉTAILLÉE:
    Pour Parc des Princes le {date_formatted}:
    - Utilise des données météo réalistes pour Paris/France à cette période
    - En janvier: généralement 5-10°C, souvent nuageux, risque de pluie moyen
@@ -972,28 +1032,32 @@ CONSIGNES D'ANALYSE:
    - Adapte selon la saison réelle
    
    - temperature: température en °C (cohérente avec la date)
-   - condition: description ("Ensoleillé", "Nuageux", "Partiellement nuageux", "Pluvieux", etc.)
-   - rain_chance: probabilité de pluie (0-100)
+   - condition: description détaillée ("Ensoleillé avec quelques nuages", "Nuageux avec averses possibles", etc.)
+   - rain_chance: probabilité de pluie (0-100) avec justification
    - wind_speed: vitesse vent en km/h (10-20 km/h typique)
    - emoji: emoji météo approprié (☀️, 🌤️, ⛅, 🌧️, ⛈️, etc.)
 
-4. COMPOSITIONS PROBABLES:
+4. COMPOSITIONS PROBABLES DÉTAILLÉES:
    Génère les compositions RÉALISTES et ACTUELLES (saison 2024-2025):
    
    Pour {home_team}:
    {home_lineup_instruction}
-   - Formation: 4-3-3 (typique)
+   - Formation: 4-3-3 (typique) ou autre selon le contexte
+   - Inclus les vrais noms de joueurs actuels
    
    Pour {away_team}:
    {away_lineup_instruction}
-   - Formation: 4-3-3
+   - Formation: 4-3-3 ou autre selon le contexte
+   - Inclus les vrais noms de joueurs actuels
 
 IMPORTANT:
+- Analyse TRÈS DÉTAILLÉE avec justification de chaque score
 - Adapte TOUS les scores et analyses au match spécifique "{match_name}"
 - Ne copie pas les valeurs d'un autre match
 - Sois cohérent: PSG-OM > PSG-OL > PSG-Monaco > PSG-équipe moyenne
-- Utilise les vrais effectifs 2024-2025
-- Météo réaliste pour {date_formatted}
+- Utilise les vrais effectifs 2024-2025 avec noms réels
+- Météo réaliste et détaillée pour {date_formatted}
+- L'analyse doit faire 5-7 phrases minimum avec détails concrets
 
 Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
 """ + json_template
@@ -1118,6 +1182,10 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
             
             # Ajouter timestamp
             complete_data['last_updated'] = datetime.now().isoformat()
+            
+            # Logger la réponse Groq complète
+            log(f"✅ Réponse Groq reçue pour {match_name}", 'info')
+            log(f"📊 Données Groq complètes: {json.dumps(complete_data, ensure_ascii=False, indent=2)}", 'info')
             
             # Sauvegarder dans le cache
             save_groq_cache(match_name, complete_data)
