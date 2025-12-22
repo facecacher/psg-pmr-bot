@@ -1135,14 +1135,27 @@ CONSIGNES D'ANALYSE DÉTAILLÉE ET CONTEXTUALISÉE
    - Formation: 4-3-3 ou autre selon le contexte
    - Inclus les vrais noms de joueurs actuels
 
-IMPORTANT:
-- Analyse TRÈS DÉTAILLÉE avec justification de chaque score
+═══════════════════════════════════════════════════════════════
+INSTRUCTIONS FINALES
+═══════════════════════════════════════════════════════════════
+
+IMPORTANT - RÈGLES STRICTES:
+- Analyse TRÈS DÉTAILLÉE avec justification de chaque score basée sur le CONTEXTE PMR
 - Adapte TOUS les scores et analyses au match spécifique "{match_name}"
-- Ne copie pas les valeurs d'un autre match
-- Sois cohérent: PSG-OM > PSG-OL > PSG-Monaco > PSG-équipe moyenne
-- Utilise les vrais effectifs 2024-2025 avec noms réels
-- Météo réaliste et détaillée pour {date_formatted}
-- L'analyse doit faire 5-7 phrases minimum avec détails concrets
+- Ne copie JAMAIS les valeurs d'un autre match
+- Sois cohérent: PSG-OM > PSG-OL > PSG-Monaco > PSG-équipe moyenne (pour la demande PMR)
+- Utilise les vrais effectifs 2024-2025 avec noms réels de joueurs
+- Météo réaliste et détaillée pour {date_formatted} à Paris
+- L'analyse textuelle doit faire 7-10 phrases minimum avec détails concrets
+- TON PROFESSIONNEL: Sois empathique, encourageant, et pratique pour les personnes en situation de handicap
+- Mentionne l'utilité du bot de surveillance et des alertes Telegram
+- Sois réaliste sur la rareté des places PMR mais encourageant sur les possibilités
+
+CONTEXTE À GARDER EN TÊTE:
+- Cette analyse sera lue par des personnes qui ont besoin d'une place PMR
+- Elles comptent sur cette analyse pour comprendre leurs chances
+- Le bot les aide à ne pas rater une opportunité
+- C'est un enjeu d'accessibilité et d'inclusion
 
 Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
 """ + json_template
