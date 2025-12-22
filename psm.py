@@ -1163,16 +1163,23 @@ CONSIGNES D'ANALYSE DÉTAILLÉE ET CONTEXTUALISÉE
 {comparison_section}
 
 3. MÉTÉO PRÉVUE DÉTAILLÉE:
-   Pour Parc des Princes à la date que tu auras générée dans match_info.date_formatted:
-   - Utilise des données météo réalistes pour Paris/France à cette période
-   - En janvier: généralement 5-10°C, souvent nuageux, risque de pluie moyen
-   - En été: 20-30°C, plutôt ensoleillé
-   - Adapte selon la saison réelle
+   {"IMPORTANT: Utilise les informations EXACTES suivantes pour générer une météo PRÉCISE:" if use_match_data else "Pour le stade à la date que tu auras générée dans match_info.date_formatted:"}
+   {"- Date du match: " + date_formatted_fr if use_match_data else ""}
+   {"- Heure du match: " + time_formatted if use_match_data else ""}
+   {"- Lieu/Stade: " + lieu if use_match_data else "- Stade: Parc des Princes (Paris, France)"}
    
-   - temperature: température en °C (cohérente avec la date)
-   - condition: description détaillée ("Ensoleillé avec quelques nuages", "Nuageux avec averses possibles", etc.)
-   - rain_chance: probabilité de pluie (0-100) avec justification
-   - wind_speed: vitesse vent en km/h (10-20 km/h typique)
+   {"Génère une météo RÉALISTE et PRÉCISE pour " + lieu + " le " + date_formatted_fr + " à " + time_formatted + "." if use_match_data else "Génère une météo réaliste pour Paris/France à cette période."}
+   
+   {"CONSIDÈRE:" if use_match_data else "Utilise des données météo réalistes:"}
+   {"- La saison exacte (mois: " + mois_fr.capitalize() + ", jour: " + str(match_date_obj.day) + ")" if use_match_data else "- En janvier: généralement 5-10°C, souvent nuageux, risque de pluie moyen"}
+   {"- L'heure du match (" + time_formatted + ") pour adapter la température (plus frais le soir)" if use_match_data else "- En été: 20-30°C, plutôt ensoleillé"}
+   {"- Le lieu spécifique (" + lieu + ") pour adapter les conditions météo" if use_match_data else "- Adapte selon la saison réelle"}
+   {"- Les conditions météo typiques pour cette date et ce lieu en France" if use_match_data else ""}
+   
+   - temperature: température en °C ({"cohérente avec " + date_formatted_fr + " à " + time_formatted + " à " + lieu if use_match_data else "cohérente avec la date"})
+   - condition: description détaillée et précise ("Ensoleillé avec quelques nuages", "Nuageux avec averses possibles", etc.)
+   - rain_chance: probabilité de pluie (0-100) avec justification basée sur {"la date et le lieu spécifiques" if use_match_data else "la période"}
+   - wind_speed: vitesse vent en km/h (10-20 km/h typique pour {"ce lieu" if use_match_data else "Paris"})
    - emoji: emoji météo approprié (☀️, 🌤️, ⛅, 🌧️, ⛈️, etc.)
 
 4. COMPOSITIONS PROBABLES DÉTAILLÉES:
