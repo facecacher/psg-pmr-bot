@@ -1070,6 +1070,10 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
         
         GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
         
+        log(f"📡 Appel API Groq pour {match_name}", 'info')
+        log(f"🔑 GROQ_API_KEY présente: {'Oui' if GROQ_API_KEY else 'Non'}", 'info')
+        log(f"🔗 URL API: {GROQ_API_URL}", 'info')
+        
         # Appeler l'API Groq
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -1093,7 +1097,18 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
             "top_p": 0.9
         }
         
-        response = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=30)
+        log(f"📤 Payload envoyé - Model: {payload['model']}, Messages: {len(payload['messages'])}", 'info')
+        log(f"📝 Taille du prompt: {len(prompt)} caractères", 'info')
+        
+        try:
+            response = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=30)
+            log(f"📥 Réponse Groq reçue - Status: {response.status_code}", 'info')
+        except requests.exceptions.Timeout:
+            log(f"⏱️ Timeout lors de l'appel API Groq (30s dépassé)", 'error')
+            raise
+        except requests.exceptions.RequestException as e:
+            log(f"❌ Erreur réseau lors de l'appel API Groq: {e}", 'error')
+            raise
         
         if response.status_code != 200:
             error_detail = ""
@@ -1101,8 +1116,9 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
                 error_response = response.json()
                 error_detail = f" - {error_response.get('error', {}).get('message', str(error_response))}"
             except:
-                error_detail = f" - {response.text[:200]}"
+                error_detail = f" - {response.text[:500]}"
             log(f"❌ Erreur API Groq: {response.status_code}{error_detail}", 'error')
+            log(f"📄 Réponse complète (premiers 1000 caractères): {response.text[:1000]}", 'error')
             # Retourner des données par défaut au lieu d'une erreur 500
             default_data = {
                 "analysis": {
@@ -1150,7 +1166,16 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
             return jsonify(default_data)
         
         result = response.json()
+        log(f"✅ Réponse JSON parsée avec succès", 'info')
+        log(f"📊 Nombre de choix: {len(result.get('choices', []))}", 'info')
+        
+        if 'choices' not in result or len(result['choices']) == 0:
+            raise ValueError("Aucun choix dans la réponse Groq")
+        
         content = result['choices'][0]['message']['content']
+        content_original = content  # Sauvegarder pour les logs d'erreur
+        log(f"📝 Contenu brut reçu (premiers 500 caractères): {content[:500]}", 'info')
+        log(f"📏 Taille du contenu: {len(content)} caractères", 'info')
         
         # Parser le JSON de la réponse
         try:
@@ -1217,6 +1242,10 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
         except (json.JSONDecodeError, ValueError) as e:
             # Si le parsing échoue, retourner des données par défaut
             log(f"⚠️ Réponse Groq invalide, utilisation de valeurs par défaut: {e}", 'warning')
+            log(f"📄 Contenu original (premiers 1000 caractères): {content_original[:1000]}", 'warning')
+            log(f"📄 Contenu nettoyé (premiers 1000 caractères): {content[:1000]}", 'warning')
+            if json_match:
+                log(f"📄 JSON extrait (premiers 1000 caractères): {json_match[:1000]}", 'warning')
             default_data = {
                 "analysis": {
                     "hype_score": 75,
