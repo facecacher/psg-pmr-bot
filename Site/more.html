@@ -353,9 +353,9 @@
                     </div>
                 </div>
 
-                <!-- Composition OM -->
+                <!-- Composition équipe adverse -->
                 <div class="glass rounded-3xl p-6 slide-in" style="animation-delay: 0.5s">
-                    <h3 class="text-xl font-black mb-6">Composition probable OM</h3>
+                    <h3 class="text-xl font-black mb-6" id="lineup-away-title">Composition probable OM</h3>
                     <div class="space-y-3 text-sm" id="lineup-away">
                         <div class="flex items-start gap-3 glass p-3 rounded-lg">
                             <span class="font-mono text-gray-400 min-w-[28px]">GK</span>
@@ -831,11 +831,21 @@
         
         // Mettre à jour les compositions
         function updateLineups(lineups, homeTeam, awayTeam) {
+            console.log('⚽ Mise à jour compositions pour:', homeTeam, 'vs', awayTeam);
+            
+            // Mettre à jour le titre de la composition adverse
+            const awayTitle = document.getElementById('lineup-away-title');
+            if (awayTitle) {
+                awayTitle.textContent = `Composition probable ${awayTeam}`;
+                console.log('✅ Titre composition adverse mis à jour:', awayTeam);
+            }
+            
             // Mettre à jour la composition PSG
             const psgLineup = lineups.home;
             const psgContainer = document.getElementById('lineup-psg');
             
             if (psgContainer && psgLineup) {
+                console.log('✅ Composition PSG trouvée:', psgLineup);
                 const positions = [
                     { code: 'GK', players: psgLineup.gk },
                     { code: 'DF', players: psgLineup.df },
