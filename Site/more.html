@@ -153,7 +153,7 @@
                             <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
                             </svg>
-                            <span>Parc des Princes</span>
+                            <span id="match-lieu">Parc des Princes</span>
                         </div>
                     </div>
                 </div>
@@ -847,6 +847,66 @@
                 console.log('✅ Vent mis à jour:', weather.wind_speed);
             } else {
                 console.warn('⚠️ Élément weather-wind non trouvé');
+            }
+        }
+        
+        // Mettre à jour les détails du match depuis matches.json
+        function updateMatchDetails(matchDetails) {
+            console.log('📋 Mise à jour détails match:', matchDetails);
+            
+            // Compétition
+            const competitionEl = document.getElementById('match-competition');
+            if (competitionEl && matchDetails.competition) {
+                competitionEl.textContent = matchDetails.competition;
+                console.log('✅ Compétition mise à jour:', matchDetails.competition);
+            }
+            
+            // Date
+            if (matchDetails.date) {
+                const dateObj = new Date(matchDetails.date + 'T00:00:00');
+                const jours_semaine = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+                const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+                const jour_semaine = jours_semaine[dateObj.getDay()];
+                const jour = dateObj.getDate();
+                const mois_nom = mois[dateObj.getMonth()];
+                const annee = dateObj.getFullYear();
+                const date_formatted = `${jour_semaine} ${jour} ${mois_nom.charAt(0).toUpperCase() + mois_nom.slice(1)} ${annee}`;
+                
+                const matchDateEl = document.getElementById('match-date');
+                if (matchDateEl) {
+                    matchDateEl.textContent = date_formatted;
+                    console.log('✅ Date mise à jour:', date_formatted);
+                }
+            }
+            
+            // Heure
+            const matchTimeEl = document.getElementById('match-time');
+            if (matchTimeEl && matchDetails.time) {
+                matchTimeEl.textContent = matchDetails.time;
+                console.log('✅ Heure mise à jour:', matchDetails.time);
+            }
+            
+            // Lieu/Stade
+            const lieuEl = document.getElementById('match-lieu');
+            if (lieuEl && matchDetails.lieu) {
+                lieuEl.textContent = matchDetails.lieu;
+                console.log('✅ Lieu mis à jour:', matchDetails.lieu);
+            }
+            
+            // Type de match (détection automatique)
+            const matchTypeEl = document.getElementById('match-type');
+            if (matchTypeEl) {
+                const matchName = matchDetails.nom || '';
+                let matchType = 'Match de championnat';
+                if (matchName.includes('OM')) {
+                    matchType = 'Le Classique';
+                } else if (matchName.includes('PARIS FC')) {
+                    matchType = 'Derby';
+                } else if (matchName.includes('OL') || matchName.includes('Lyon') || matchName.includes('Monaco')) {
+                    matchType = 'Affiche';
+                }
+                matchTypeEl.textContent = matchType;
+                console.log('✅ Type de match mis à jour:', matchType);
             }
         }
         
