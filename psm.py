@@ -1328,8 +1328,10 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
             complete_data = json.loads(json_match)
             
             # Vérifier que toutes les sections sont présentes
-            if not all(key in complete_data for key in ['analysis', 'comparison', 'weather', 'lineups']):
-                raise ValueError("Données incomplètes dans la réponse Groq")
+            required_keys = ['match_info', 'analysis', 'comparison', 'weather', 'lineups']
+            if not all(key in complete_data for key in required_keys):
+                missing = [k for k in required_keys if k not in complete_data]
+                raise ValueError(f"Données incomplètes dans la réponse Groq. Sections manquantes: {missing}")
             
             # Ajouter timestamp
             complete_data['last_updated'] = datetime.now().isoformat()
