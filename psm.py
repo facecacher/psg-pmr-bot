@@ -1090,7 +1090,7 @@ MATCH À ANALYSER
 - Historique: Le bot surveille ce match depuis le début, vérifiant régulièrement la disponibilité
 
 INFORMATIONS À GÉNÉRER (section match_info):
-{f"- competition: Utilise '{competition}' (déjà fournie)" if use_match_data else "- competition: Détermine la compétition (Ligue 1, Coupe de France, Ligue des Champions, etc.)"}
+{f"- competition: Utilise '{competition}' (déjà fournie dans les données du match)" if use_match_data else "- competition: Détermine la compétition (Ligue 1, Coupe de France, Ligue des Champions, etc.)"}
 - match_type: Détermine le type de match selon l'adversaire:
   * "Le Classique" pour PSG vs OM
   * "Derby" pour PSG vs PARIS FC

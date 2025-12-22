@@ -440,6 +440,22 @@
                 console.log('✅ Match trouvé:', match);
                 currentMatch = match;
                 
+                // Charger les détails complets du match (compétition, date, heure, lieu)
+                try {
+                    const matchDetailsResponse = await fetch(`${BOT_URL}/api/matches/${encodeURIComponent(matchName)}`);
+                    if (matchDetailsResponse.ok) {
+                        const matchDetails = await matchDetailsResponse.json();
+                        console.log('✅ Détails match chargés:', matchDetails);
+                        
+                        // Mettre à jour les informations du match
+                        updateMatchDetails(matchDetails);
+                    } else {
+                        console.warn('⚠️ Impossible de charger les détails du match');
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Erreur chargement détails match:', e);
+                }
+                
                 // Charger l'historique des détections
                 chargerHistoriqueDetections(match.nom);
                 

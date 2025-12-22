@@ -482,12 +482,24 @@
                 container.innerHTML = ''; // Vider le conteneur
                 
                 // Créer une card pour chaque match
-                data.matchs.forEach((match) => {
+                data.matchs.forEach(async (match) => {
+                    // Charger les détails complets du match pour avoir la compétition
+                    let competition = 'Ligue 1'; // Valeur par défaut
+                    try {
+                        const matchDetailsResponse = await fetch(`${BOT_URL}/api/matches/${encodeURIComponent(match.nom)}`);
+                        if (matchDetailsResponse.ok) {
+                            const matchDetails = await matchDetailsResponse.json();
+                            competition = matchDetails.competition || 'Ligue 1';
+                        }
+                    } catch (e) {
+                        console.warn('Impossible de charger les détails du match:', e);
+                    }
+                    
                     const card = document.createElement('div');
                     card.className = 'card';
                     card.style.cursor = 'pointer';
                     card.innerHTML = `
-                        <div class="card-tag">Ligue 1</div>
+                        <div class="card-tag">${competition}</div>
                         <div class="match-name">${match.nom}</div>
                         
                         <div class="status-row">
