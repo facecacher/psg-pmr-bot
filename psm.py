@@ -897,6 +897,7 @@ def api_groq_analyze():
         jour_semaine = jours_semaine[match_date.weekday()]
         mois_fr = MOIS_FR[match_date.month]
         date_formatted_fr = f"{jour_semaine} {match_date.day} {mois_fr.capitalize()} {match_date.year}"
+        date_formatted = date_formatted_fr  # Alias pour compatibilité
         time_formatted = match_date.strftime("%H:%M")
         
         # Construire la section comparaison
