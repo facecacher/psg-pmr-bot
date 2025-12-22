@@ -1183,9 +1183,31 @@ Réponds UNIQUEMENT avec ce JSON, sans texte avant/après, sans markdown:
             # Ajouter timestamp
             complete_data['last_updated'] = datetime.now().isoformat()
             
-            # Logger la réponse Groq complète
+            # Logger la réponse Groq complète de manière structurée
             log(f"✅ Réponse Groq reçue pour {match_name}", 'info')
-            log(f"📊 Données Groq complètes: {json.dumps(complete_data, ensure_ascii=False, indent=2)}", 'info')
+            
+            # Logger chaque section séparément pour plus de lisibilité
+            if 'analysis' in complete_data:
+                analysis = complete_data['analysis']
+                log(f"📊 Analyse IA - Hype: {analysis.get('hype_score', 'N/A')}% | Affluence: {analysis.get('affluence_prevue', 'N/A')}% | Probabilité PMR: {analysis.get('probabilite_pmr', 'N/A')}%", 'info')
+                log(f"💭 Analyse détaillée: {analysis.get('analyse', 'N/A')[:200]}...", 'info')
+            
+            if 'comparison' in complete_data:
+                comp = complete_data['comparison']
+                log(f"📈 Comparaison - Match actuel: {comp.get('current_match', 'N/A')}%", 'info')
+            
+            if 'weather' in complete_data:
+                weather = complete_data['weather']
+                log(f"🌤️ Météo - {weather.get('temperature', 'N/A')}°C | {weather.get('condition', 'N/A')} | Pluie: {weather.get('rain_chance', 'N/A')}% | Vent: {weather.get('wind_speed', 'N/A')} km/h", 'info')
+            
+            if 'lineups' in complete_data:
+                lineups = complete_data['lineups']
+                home_form = lineups.get('home', {}).get('formation', 'N/A')
+                away_form = lineups.get('away', {}).get('formation', 'N/A')
+                log(f"⚽ Compositions - Domicile: {home_form} | Extérieur: {away_form}", 'info')
+            
+            # Logger le JSON complet pour référence (formaté)
+            log(f"📋 JSON Groq complet:\n{json.dumps(complete_data, ensure_ascii=False, indent=2)}", 'info')
             
             # Sauvegarder dans le cache
             save_groq_cache(match_name, complete_data)

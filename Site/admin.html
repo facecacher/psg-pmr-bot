@@ -655,8 +655,24 @@
                         // Formater le message avec les emojis et couleurs
                         let formattedMessage = log.message;
                         
+                        // Détecter si c'est un JSON (commence par "📋 JSON Groq complet:")
+                        const isJsonLog = formattedMessage.includes('📋 JSON Groq complet:');
+                        let messageContent = formattedMessage;
+                        
+                        if (isJsonLog) {
+                            // Extraire le JSON et le formater
+                            const jsonStart = formattedMessage.indexOf('\n');
+                            if (jsonStart > 0) {
+                                const jsonPart = formattedMessage.substring(jsonStart + 1);
+                                messageContent = formattedMessage.substring(0, jsonStart) + 
+                                    '<pre style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 5px; margin-top: 8px; overflow-x: auto; font-size: 11px; max-height: 300px; overflow-y: auto;">' + 
+                                    jsonPart + 
+                                    '</pre>';
+                            }
+                        }
+                        
                         // Remplacer les emojis par des versions stylisées
-                        formattedMessage = formattedMessage
+                        messageContent = messageContent
                             .replace(/✅/g, '<span style="color: #00ff88;">✅</span>')
                             .replace(/❌/g, '<span style="color: #ff4d4d;">❌</span>')
                             .replace(/🔄/g, '<span style="color: #0066ff;">🔄</span>')
@@ -667,13 +683,17 @@
                             .replace(/🗑️/g, '<span style="color: #ff4d4d;">🗑️</span>')
                             .replace(/🌐/g, '<span style="color: #0066ff;">🌐</span>')
                             .replace(/📊/g, '<span style="color: #00ff88;">📊</span>')
+                            .replace(/📈/g, '<span style="color: #00ff88;">📈</span>')
+                            .replace(/🌤️/g, '<span style="color: #00ff88;">🌤️</span>')
+                            .replace(/⚽/g, '<span style="color: #00ff88;">⚽</span>')
+                            .replace(/💭/g, '<span style="color: #0066ff;">💭</span>')
                             .replace(/📂/g, '<span style="color: #0066ff;">📂</span>')
                             .replace(/📝/g, '<span style="color: #0066ff;">📝</span>')
                             .replace(/⏸️/g, '<span style="color: #ffaa00;">⏸️</span>');
                         
                         logElement.innerHTML = `
                             <div class="log-time">${log.timestamp}</div>
-                            <div class="log-message">${formattedMessage}</div>
+                            <div class="log-message">${messageContent}</div>
                         `;
                         
                         container.appendChild(logElement);
