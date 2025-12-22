@@ -960,6 +960,12 @@ def api_groq_analyze():
         
         # Construire le template JSON séparément
         json_template = """{{
+  "match_info": {{
+    "competition": "string (ex: Ligue 1, Coupe de France, Ligue des Champions)",
+    "match_type": "string (ex: Le Classique, Derby, Match de championnat, etc.)",
+    "date_formatted": "string (format: 'Dimanche 15 Janvier 2025')",
+    "time": "string (format: '21:00')"
+  }},
   "analysis": {{
     "hype_score": number,
     "affluence_prevue": number,
