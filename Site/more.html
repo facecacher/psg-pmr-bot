@@ -610,12 +610,20 @@
                 
                 // 2. Mettre à jour la comparaison (avec vrais noms de matchs)
                 if (data.comparison) {
+                    console.log('📈 Mise à jour comparaison:', data.comparison);
                     updateComparison(data.comparison, match.nom);
+                    console.log('✅ Comparaison mise à jour');
+                } else {
+                    console.warn('⚠️ Pas de données de comparaison');
                 }
                 
                 // 3. Mettre à jour la météo
                 if (data.weather) {
+                    console.log('🌤️ Mise à jour météo:', data.weather);
                     updateWeather(data.weather);
+                    console.log('✅ Météo mise à jour');
+                } else {
+                    console.warn('⚠️ Pas de données météo');
                 }
                 
                 // 4. Mettre à jour les compositions
@@ -758,6 +766,7 @@
                              document.querySelector('.glass.rounded-3xl.p-8 .space-y-4');
             
             if (container) {
+                console.log('✅ Conteneur comparaison trouvé, mise à jour avec', allComparisons.length, 'matchs');
                 container.innerHTML = allComparisons.map((comp, i) => `
                     <div>
                         <div class="flex justify-between mb-2">
@@ -781,11 +790,40 @@
             const rainEl = document.getElementById('weather-rain');
             const windEl = document.getElementById('weather-wind');
             
-            if (emojiEl) emojiEl.textContent = weather.emoji;
-            if (tempEl) tempEl.textContent = `${weather.temperature}°C`;
-            if (conditionEl) conditionEl.textContent = weather.condition;
-            if (rainEl) rainEl.textContent = `${weather.rain_chance}%`;
-            if (windEl) windEl.textContent = `${weather.wind_speed} km/h`;
+            if (emojiEl) {
+                emojiEl.textContent = weather.emoji;
+                console.log('✅ Emoji météo mis à jour:', weather.emoji);
+            } else {
+                console.warn('⚠️ Élément weather-emoji non trouvé');
+            }
+            
+            if (tempEl) {
+                tempEl.textContent = `${weather.temperature}°C`;
+                console.log('✅ Température mise à jour:', weather.temperature);
+            } else {
+                console.warn('⚠️ Élément weather-temp non trouvé');
+            }
+            
+            if (conditionEl) {
+                conditionEl.textContent = weather.condition;
+                console.log('✅ Condition météo mise à jour:', weather.condition);
+            } else {
+                console.warn('⚠️ Élément weather-condition non trouvé');
+            }
+            
+            if (rainEl) {
+                rainEl.textContent = `${weather.rain_chance}%`;
+                console.log('✅ Pluie mise à jour:', weather.rain_chance);
+            } else {
+                console.warn('⚠️ Élément weather-rain non trouvé');
+            }
+            
+            if (windEl) {
+                windEl.textContent = `${weather.wind_speed} km/h`;
+                console.log('✅ Vent mis à jour:', weather.wind_speed);
+            } else {
+                console.warn('⚠️ Élément weather-wind non trouvé');
+            }
         }
         
         // Mettre à jour les compositions
