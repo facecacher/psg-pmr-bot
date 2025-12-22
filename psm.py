@@ -510,8 +510,20 @@ def api_add_match():
             if match.get('url') == url:
                 return jsonify({"error": f"Un match avec cette URL existe déjà"}), 409
         
-        # Ajouter le nouveau match
-        new_match = {"nom": nom, "url": url}
+        # Ajouter le nouveau match avec tous les champs
+        competition = data.get('competition', 'Ligue 1')
+        date = data.get('date')
+        time = data.get('time', '21:00')
+        lieu = data.get('lieu', 'Parc des Princes')
+        
+        new_match = {
+            "nom": nom, 
+            "url": url,
+            "competition": competition,
+            "date": date,
+            "time": time,
+            "lieu": lieu
+        }
         matches.append(new_match)
         
         # Sauvegarder
@@ -1067,8 +1079,10 @@ MATCH À ANALYSER
 ═══════════════════════════════════════════════════════════════
 
 - Équipes: {match_name}
-- Stade: Parc des Princes (capacité ~48 000 places, places PMR très limitées)
-- Contexte temporel: {saison_info}
+{f"- Compétition: {competition}" if use_match_data else ""}
+{f"- Date: {date_formatted_fr}" if use_match_data else f"- Contexte temporel: {saison_info}"}
+{f"- Heure: {time_formatted}" if use_match_data else ""}
+- Stade: {lieu if use_match_data else "Parc des Princes"} (capacité ~48 000 places, places PMR très limitées)
 - Contexte: {importance['rivalry']}
 - Importance: {importance_text}
 - Nombre de vérifications effectuées: {match.get('nb_checks', 0)}
