@@ -77,7 +77,9 @@ def get_db_connection():
         db_conn.row_factory = sqlite3.Row  # Permet d'accéder aux colonnes par nom
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:get_db_connection:NEW_CONN","message":"New DB connection created","data":{"db_file":DB_FILE},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -275,7 +277,9 @@ def save_match_to_db(match_data):
         conn = get_db_connection()
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:save_match_to_db:AFTER_CONN","message":"DB connection obtained","data":{"conn_is_none":conn is None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -294,7 +298,9 @@ def save_match_to_db(match_data):
         conn.commit()
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"psm.py:save_match_to_db:SUCCESS","message":"Match saved successfully","data":{"match_nom":match_data.get('nom'),"rowcount":cursor.rowcount},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -302,7 +308,9 @@ def save_match_to_db(match_data):
     except Exception as e:
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"psm.py:save_match_to_db:ERROR","message":"Save failed","data":{"match_nom":match_data.get('nom'),"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -325,7 +333,9 @@ def load_matches_from_db():
         conn = get_db_connection()
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:load_matches_from_db:AFTER_CONN","message":"DB connection obtained","data":{"conn_is_none":conn is None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -334,7 +344,9 @@ def load_matches_from_db():
         rows = cursor.fetchall()
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:AFTER_QUERY","message":"Query executed","data":{"row_count":len(rows)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -350,7 +362,9 @@ def load_matches_from_db():
             })
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:RETURN","message":"Returning matches","data":{"match_count":len(matches),"match_names":[m.get('nom') for m in matches]},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -358,7 +372,9 @@ def load_matches_from_db():
     except Exception as e:
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:ERROR","message":"Load failed","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -588,7 +604,9 @@ def charger_matchs():
         matches = load_matches_from_db()
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:AFTER_SQLITE","message":"After load from SQLite","data":{"match_count":len(matches) if matches else 0,"matches":matches},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -608,7 +626,9 @@ def charger_matchs():
         if os.path.exists(MATCHES_FILE):
             # #region agent log
             try:
-                with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                     f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:CHECKING_JSON","message":"Checking matches.json","data":{"file_exists":True},"timestamp":int(__import__('time').time()*1000)}) + '\n')
             except: pass
             # #endregion
@@ -618,7 +638,9 @@ def charger_matchs():
                 
                 # #region agent log
                 try:
-                    with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                    debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                         f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:JSON_LOADED","message":"matches.json loaded","data":{"match_count":len(matches) if matches else 0,"matches":matches},"timestamp":int(__import__('time').time()*1000)}) + '\n')
                 except: pass
                 # #endregion
@@ -634,7 +656,9 @@ def charger_matchs():
             except Exception as e:
                 # #region agent log
                 try:
-                    with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                    debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                         f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:JSON_ERROR","message":"Error reading matches.json","data":{"error":str(e)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
                 except: pass
                 # #endregion
@@ -1323,7 +1347,9 @@ def api_add_match():
         # #region agent log
         import json as json_module
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"psm.py:api_add_match:AFTER_CHARGER","message":"After charger_matchs in api_add_match","data":{"existing_count":len(matches),"new_match_nom":nom},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
@@ -1355,7 +1381,9 @@ def api_add_match():
         save_result = save_match_to_db(new_match)
         # #region agent log
         try:
-            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+            with open(debug_log_path, 'a', encoding='utf-8') as f:
                 f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"psm.py:api_add_match:AFTER_SAVE","message":"After save_match_to_db","data":{"save_success":save_result,"match_nom":nom},"timestamp":int(__import__('time').time()*1000)}) + '\n')
         except: pass
         # #endregion
