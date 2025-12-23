@@ -277,10 +277,10 @@ def load_matches_from_db():
             matches.append({
                 'nom': row['nom'],
                 'url': row['url'],
-                'competition': row['competition'],
-                'date': row['date'],
-                'time': row['time'],
-                'lieu': row['lieu']
+                'competition': row['competition'] if row['competition'] else None,  # Convertir '' en None
+                'date': row['date'] if row['date'] else None,  # Convertir '' en None
+                'time': row['time'] if row['time'] else None,  # Convertir '' en None
+                'lieu': row['lieu'] if row['lieu'] else None   # Convertir '' en None
             })
         return matches
     except Exception as e:

@@ -489,10 +489,14 @@
                         const matchDetailsResponse = await fetch(`${BOT_URL}/api/matches/${encodeURIComponent(match.nom)}`);
                         if (matchDetailsResponse.ok) {
                             const matchDetails = await matchDetailsResponse.json();
+                            console.log('📋 Détails match récupérés:', matchDetails);
                             competition = matchDetails.competition || 'Ligue 1';
+                            console.log('✅ Compétition utilisée:', competition);
+                        } else {
+                            console.warn('⚠️ Erreur HTTP lors du chargement des détails:', matchDetailsResponse.status);
                         }
                     } catch (e) {
-                        console.warn('Impossible de charger les détails du match:', e);
+                        console.warn('⚠️ Impossible de charger les détails du match:', e);
                     }
                     
                     const card = document.createElement('div');

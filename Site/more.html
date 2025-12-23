@@ -854,43 +854,55 @@
         function updateMatchDetails(matchDetails) {
             console.log('📋 Mise à jour détails match:', matchDetails);
             
-            // Compétition
+            // Compétition - TOUJOURS mettre à jour
             const competitionEl = document.getElementById('match-competition');
-            if (competitionEl && matchDetails.competition) {
-                competitionEl.textContent = matchDetails.competition;
-                console.log('✅ Compétition mise à jour:', matchDetails.competition);
+            if (competitionEl) {
+                competitionEl.textContent = matchDetails.competition || 'Ligue 1';
+                console.log('✅ Compétition mise à jour:', matchDetails.competition || 'Ligue 1');
             }
             
-            // Date
-            if (matchDetails.date) {
-                const dateObj = new Date(matchDetails.date + 'T00:00:00');
-                const jours_semaine = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
-                const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-                const jour_semaine = jours_semaine[dateObj.getDay()];
-                const jour = dateObj.getDate();
-                const mois_nom = mois[dateObj.getMonth()];
-                const annee = dateObj.getFullYear();
-                const date_formatted = `${jour_semaine} ${jour} ${mois_nom.charAt(0).toUpperCase() + mois_nom.slice(1)} ${annee}`;
-                
-                const matchDateEl = document.getElementById('match-date');
-                if (matchDateEl) {
-                    matchDateEl.textContent = date_formatted;
-                    console.log('✅ Date mise à jour:', date_formatted);
+            // Date - TOUJOURS mettre à jour, même si None
+            const matchDateEl = document.getElementById('match-date');
+            if (matchDateEl) {
+                if (matchDetails.date) {
+                    try {
+                        const dateObj = new Date(matchDetails.date + 'T00:00:00');
+                        if (!isNaN(dateObj.getTime())) {
+                            const jours_semaine = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+                            const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+                            const jour_semaine = jours_semaine[dateObj.getDay()];
+                            const jour = dateObj.getDate();
+                            const mois_nom = mois[dateObj.getMonth()];
+                            const annee = dateObj.getFullYear();
+                            const date_formatted = `${jour_semaine} ${jour} ${mois_nom.charAt(0).toUpperCase() + mois_nom.slice(1)} ${annee}`;
+                            matchDateEl.textContent = date_formatted;
+                            console.log('✅ Date mise à jour:', date_formatted);
+                        } else {
+                            matchDateEl.textContent = 'Date à confirmer';
+                            console.log('⚠️ Date invalide:', matchDetails.date);
+                        }
+                    } catch (e) {
+                        matchDateEl.textContent = 'Date à confirmer';
+                        console.log('⚠️ Erreur parsing date:', e);
+                    }
+                } else {
+                    matchDateEl.textContent = 'Date à confirmer';
+                    console.log('⚠️ Date non disponible');
                 }
             }
             
-            // Heure
+            // Heure - TOUJOURS mettre à jour
             const matchTimeEl = document.getElementById('match-time');
-            if (matchTimeEl && matchDetails.time) {
-                matchTimeEl.textContent = matchDetails.time;
-                console.log('✅ Heure mise à jour:', matchDetails.time);
+            if (matchTimeEl) {
+                matchTimeEl.textContent = matchDetails.time || '21:00';
+                console.log('✅ Heure mise à jour:', matchDetails.time || '21:00');
             }
             
-            // Lieu/Stade
+            // Lieu/Stade - TOUJOURS mettre à jour
             const lieuEl = document.getElementById('match-lieu');
-            if (lieuEl && matchDetails.lieu) {
-                lieuEl.textContent = matchDetails.lieu;
-                console.log('✅ Lieu mis à jour:', matchDetails.lieu);
+            if (lieuEl) {
+                lieuEl.textContent = matchDetails.lieu || 'Parc des Princes';
+                console.log('✅ Lieu mis à jour:', matchDetails.lieu || 'Parc des Princes');
             }
             
             // Type de match (détection automatique)
