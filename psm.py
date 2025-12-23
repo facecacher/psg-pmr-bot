@@ -325,7 +325,7 @@ def init_firebase():
 
 def save_to_firestore(collection, doc_id, data):
     """Sauvegarde des données dans Firestore"""
-    global db, FIREBASE_CREDENTIALS_INVALID
+    global db, FIREBASE_CREDENTIALS_INVALID, FIREBASE_INITIALIZED
     
     # Vérifier le flag d'erreur pour éviter les tentatives répétées
     if FIREBASE_CREDENTIALS_INVALID:
@@ -362,7 +362,7 @@ def save_to_firestore(collection, doc_id, data):
 
 def load_from_firestore(collection, doc_id):
     """Charge des données depuis Firestore avec timeout"""
-    global db, FIREBASE_CREDENTIALS_INVALID
+    global db, FIREBASE_CREDENTIALS_INVALID, FIREBASE_INITIALIZED
     
     # Vérifier le flag d'erreur pour éviter les tentatives répétées
     if FIREBASE_CREDENTIALS_INVALID:
@@ -412,7 +412,7 @@ def load_from_firestore(collection, doc_id):
 
 def delete_from_firestore(collection, doc_id):
     """Supprime un document de Firestore"""
-    global db, FIREBASE_CREDENTIALS_INVALID
+    global db, FIREBASE_CREDENTIALS_INVALID, FIREBASE_INITIALIZED
     
     # Vérifier le flag d'erreur pour éviter les tentatives répétées
     if FIREBASE_CREDENTIALS_INVALID:
@@ -445,7 +445,7 @@ def delete_from_firestore(collection, doc_id):
 
 def get_all_from_firestore(collection):
     """Récupère tous les documents d'une collection Firestore avec timeout"""
-    global db, FIREBASE_CREDENTIALS_INVALID
+    global db, FIREBASE_CREDENTIALS_INVALID, FIREBASE_INITIALIZED
     
     # Vérifier le flag d'erreur pour éviter les tentatives répétées
     if FIREBASE_CREDENTIALS_INVALID:
