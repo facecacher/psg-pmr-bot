@@ -12,15 +12,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import collections
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-
-# Import Firebase Admin (optionnel - seulement si configuré)
-try:
-    import firebase_admin
-    from firebase_admin import credentials, firestore
-    FIREBASE_AVAILABLE = True
-except ImportError:
-    FIREBASE_AVAILABLE = False
-    log("⚠️ firebase-admin non installé. Firestore désactivé.", 'warning')
+import sqlite3
 
 # ====================
 # SYSTÈME DE LOGS POUR L'ADMIN
@@ -62,629 +54,469 @@ GROQ_CACHE_FILE = 'groq_cache.json'
 DETECTIONS_HISTORY_FILE = 'detections_history.json'
 
 # ====================
-# CONFIGURATION FIREBASE/FIRESTORE
+# CONFIGURATION SQLITE
 # ====================
-FIREBASE_INITIALIZED = False
-FIREBASE_CREDENTIALS_INVALID = False  # Flag pour éviter les tentatives répétées avec credentials invalides
-db = None  # Instance Firestore
+DB_FILE = 'psm_bot.db'
+db_conn = None  # Connexion SQLite
 
-def _parse_credentials_json(credentials_str):
-    """
-    Parse les credentials Firebase depuis une chaîne JSON avec plusieurs tentatives
-    Retourne (cred_dict, error_message) ou (None, error_message)
-    """
-    import json as json_module
-    
-    # Tentative 1 : Parsing direct
-    try:
-        cred_dict = json_module.loads(credentials_str)
-        return cred_dict, None
-    except json.JSONDecodeError:
-        pass
-    
-    # Tentative 2 : Nettoyer les espaces et retours à la ligne
-    try:
-        credentials_str_clean = credentials_str.strip()
-        cred_dict = json_module.loads(credentials_str_clean)
-        return cred_dict, None
-    except json.JSONDecodeError:
-        pass
-    
-    # Tentative 3 : Retirer les guillemets externes et décoder les échappements
-    try:
-        credentials_str_clean = credentials_str.strip()
-        if credentials_str_clean.startswith('"') and credentials_str_clean.endswith('"'):
-            credentials_str_clean = credentials_str_clean[1:-1]
-        # Décoder les échappements JSON
-        credentials_str_clean = credentials_str_clean.replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
-        cred_dict = json_module.loads(credentials_str_clean)
-        return cred_dict, None
-    except json.JSONDecodeError:
-        pass
-    
-    # Tentative 4 : Essayer de réparer les retours à la ligne mal échappés
-    try:
-        credentials_str_clean = credentials_str.strip()
-        # Remplacer \n littéral par de vrais retours à la ligne
-        credentials_str_clean = credentials_str_clean.replace('\\n', '\n')
-        # Retirer les guillemets externes si présents
-        if credentials_str_clean.startswith('"') and credentials_str_clean.endswith('"'):
-            credentials_str_clean = credentials_str_clean[1:-1]
-        cred_dict = json_module.loads(credentials_str_clean)
-        return cred_dict, None
-    except json.JSONDecodeError as e:
-        return None, f"Impossible de parser le JSON après 4 tentatives: {e}"
-    
-    return None, "Toutes les tentatives de parsing ont échoué"
+def get_db_connection():
+    """Obtient ou crée la connexion SQLite"""
+    global db_conn
+    if db_conn is None:
+        db_conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        db_conn.row_factory = sqlite3.Row  # Permet d'accéder aux colonnes par nom
+    return db_conn
 
-def _validate_credentials_structure(cred_dict):
-    """
-    Valide que le dictionnaire de credentials contient tous les champs requis
-    Retourne (is_valid, error_message)
-    """
-    required_fields = ['type', 'project_id', 'private_key', 'client_email']
-    missing_fields = [field for field in required_fields if field not in cred_dict]
-    
-    if missing_fields:
-        return False, f"Champs manquants dans les credentials: {', '.join(missing_fields)}"
-    
-    if cred_dict.get('type') != 'service_account':
-        return False, f"Type de credential invalide: {cred_dict.get('type')} (attendu: service_account)"
-    
-    return True, None
-
-def init_firebase():
-    """Initialise Firebase Admin avec les credentials depuis les variables d'environnement"""
-    global FIREBASE_INITIALIZED, FIREBASE_CREDENTIALS_INVALID, db
-    
-    if not FIREBASE_AVAILABLE:
-        log("⚠️ Firebase Admin non disponible. Utilisation des fichiers JSON locaux uniquement.", 'warning')
-        return False
-    
-    if FIREBASE_INITIALIZED:
+def init_database():
+    """Initialise la base de données SQLite et crée les tables si nécessaire"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Table matches
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS matches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL UNIQUE,
+                url TEXT NOT NULL,
+                competition TEXT,
+                date TEXT,
+                time TEXT,
+                lieu TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table status (une seule ligne)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS status (
+                id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                data TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table analytics (une seule ligne)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS analytics (
+                id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                data TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table groq_cache
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS groq_cache (
+                match_name TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Table detections
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS detections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match TEXT NOT NULL,
+                nb_places INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                date_formatee TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        log("✅ Base de données SQLite initialisée avec succès", 'success')
         return True
-    
-    # Réinitialiser le flag d'erreur si on réessaie
-    FIREBASE_CREDENTIALS_INVALID = False
-    
-    try:
-        project_id = os.environ.get('FIREBASE_PROJECT_ID')
-        credentials_str = os.environ.get('FIREBASE_CREDENTIALS')
-        credentials_path = os.environ.get('FIREBASE_CREDENTIALS_PATH')
-        
-        if not project_id:
-            log("⚠️ FIREBASE_PROJECT_ID non défini. Firestore désactivé.", 'warning')
-            return False
-        
-        # PRIORITÉ 1 : Essayer de charger les credentials depuis une variable d'environnement (JSON stringifié)
-        cred = None
-        cred_dict = None
-        if credentials_str:
-            try:
-                cred_dict, parse_error = _parse_credentials_json(credentials_str)
-                if cred_dict is None:
-                    log(f"❌ Erreur parsing FIREBASE_CREDENTIALS: {parse_error}", 'error')
-                    log(f"💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide complet", 'info')
-                    log(f"💡 Longueur de la chaîne: {len(credentials_str)} caractères", 'info')
-                    FIREBASE_CREDENTIALS_INVALID = True
-                else:
-                    # Valider la structure
-                    is_valid, validation_error = _validate_credentials_structure(cred_dict)
-                    if not is_valid:
-                        log(f"❌ Structure credentials invalide: {validation_error}", 'error')
-                        FIREBASE_CREDENTIALS_INVALID = True
-                    else:
-                        # Vérifier que le project_id correspond
-                        if cred_dict.get('project_id') != project_id:
-                            log(f"❌ Incohérence project_id: FIREBASE_PROJECT_ID={project_id} mais credentials contient project_id={cred_dict.get('project_id')}", 'error')
-                            log("💡 Vérifiez que FIREBASE_PROJECT_ID correspond au project_id dans les credentials", 'info')
-                            FIREBASE_CREDENTIALS_INVALID = True
-                        else:
-                            cred = credentials.Certificate(cred_dict)
-                            log("✅ Credentials Firebase chargés depuis FIREBASE_CREDENTIALS (variable d'environnement)", 'success')
-            except Exception as e:
-                error_str = str(e)
-                log(f"❌ Erreur chargement credentials Firebase depuis variable: {e}", 'error')
-                if 'invalid_grant' in error_str or 'Invalid JWT' in error_str:
-                    FIREBASE_CREDENTIALS_INVALID = True
-                import traceback
-                traceback.print_exc()
-        
-        # PRIORITÉ 2 : Essayer depuis un fichier (si variable d'environnement non disponible)
-        if not cred and credentials_path and os.path.exists(credentials_path):
-            try:
-                # Charger et valider le fichier
-                with open(credentials_path, 'r', encoding='utf-8') as f:
-                    file_cred_dict = json.load(f)
-                
-                # Valider la structure
-                is_valid, validation_error = _validate_credentials_structure(file_cred_dict)
-                if not is_valid:
-                    log(f"❌ Structure credentials invalide dans {credentials_path}: {validation_error}", 'error')
-                    FIREBASE_CREDENTIALS_INVALID = True
-                elif file_cred_dict.get('project_id') != project_id:
-                    log(f"❌ Incohérence project_id dans {credentials_path}: FIREBASE_PROJECT_ID={project_id} mais fichier contient project_id={file_cred_dict.get('project_id')}", 'error')
-                    FIREBASE_CREDENTIALS_INVALID = True
-                else:
-                    cred = credentials.Certificate(credentials_path)
-                    log(f"✅ Credentials Firebase chargés depuis {credentials_path}", 'success')
-            except json.JSONDecodeError as e:
-                log(f"❌ Erreur parsing JSON dans {credentials_path}: {e}", 'error')
-                FIREBASE_CREDENTIALS_INVALID = True
-            except Exception as e:
-                log(f"⚠️ Erreur chargement credentials depuis fichier {credentials_path}: {e}", 'warning')
-        
-        # PRIORITÉ 3 : Essayer le fichier par défaut (fallback)
-        if not cred and os.path.exists('firebase-credentials.json'):
-            try:
-                # Charger et valider le fichier
-                with open('firebase-credentials.json', 'r', encoding='utf-8') as f:
-                    file_cred_dict = json.load(f)
-                
-                # Valider la structure
-                is_valid, validation_error = _validate_credentials_structure(file_cred_dict)
-                if not is_valid:
-                    log(f"❌ Structure credentials invalide dans firebase-credentials.json: {validation_error}", 'error')
-                    FIREBASE_CREDENTIALS_INVALID = True
-                elif file_cred_dict.get('project_id') != project_id:
-                    log(f"❌ Incohérence project_id dans firebase-credentials.json: FIREBASE_PROJECT_ID={project_id} mais fichier contient project_id={file_cred_dict.get('project_id')}", 'error')
-                    FIREBASE_CREDENTIALS_INVALID = True
-                else:
-                    cred = credentials.Certificate('firebase-credentials.json')
-                    log("✅ Credentials Firebase chargés depuis firebase-credentials.json (fichier local)", 'success')
-            except json.JSONDecodeError as e:
-                log(f"❌ Erreur parsing JSON dans firebase-credentials.json: {e}", 'error')
-                FIREBASE_CREDENTIALS_INVALID = True
-            except Exception as e:
-                log(f"⚠️ Erreur chargement firebase-credentials.json: {e}", 'warning')
-        
-        if not cred:
-            if FIREBASE_CREDENTIALS_INVALID:
-                log("❌ Credentials Firebase invalides. Firestore désactivé.", 'error')
-            else:
-                log("⚠️ Aucun credential Firebase trouvé. Firestore désactivé.", 'warning')
-            return False
-        
-        # Initialiser Firebase Admin
-        firebase_admin.initialize_app(cred, {
-            'projectId': project_id
-        })
-        
-        # Obtenir l'instance Firestore
-        db = firestore.client()
-        
-        # TESTER la connexion avec un timeout court pour vérifier que les credentials sont valides
-        def _test_connection():
-            """Fonction interne pour tester la connexion Firestore avec une opération réelle"""
-            try:
-                # Essayer une opération réelle : créer un document test puis le supprimer
-                test_ref = db.collection('_connection_test').document('_test')
-                # Essayer de lire (peut ne pas exister, c'est OK)
-                test_ref.get()
-                # Si on arrive ici, la connexion fonctionne
-                return True
-            except Exception as e:
-                # Vérifier si c'est une erreur de credentials
-                error_str = str(e).lower()
-                credentials_errors = [
-                    'invalid_grant', 'invalid jwt', 'invalid jwt signature',
-                    'permission denied', 'unauthorized', 'authentication',
-                    'invalid credentials', 'invalid key', 'signature'
-                ]
-                if any(err in error_str for err in credentials_errors):
-                    raise ValueError(f"CREDENTIALS_ERROR: {e}")
-                # Autres erreurs (réseau, collection n'existe pas, etc.) sont OK
-                return True
-        
-        try:
-            # Tester avec un timeout de 5 secondes
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_test_connection)
-                future.result(timeout=5)
-        except FutureTimeoutError:
-            # Timeout = problème réseau, mais pas nécessairement credentials invalides
-            log("⚠️ Timeout lors du test de connexion Firestore (peut être normal si réseau lent)", 'warning')
-            log("ℹ️ Firestore sera activé mais peut ne pas fonctionner correctement", 'info')
-        except ValueError as test_error:
-            # Erreur de credentials détectée
-            error_str = str(test_error)
-            if 'CREDENTIALS_ERROR' in error_str:
-                log("❌ Credentials Firebase invalides détectés lors du test de connexion. Firestore désactivé.", 'error')
-                log("💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide et complet", 'info')
-                log("💡 Vérifiez que le project_id correspond bien", 'info')
-                log("💡 Vous devrez peut-être régénérer les credentials depuis la console Firebase", 'info')
-                FIREBASE_INITIALIZED = False
-                FIREBASE_CREDENTIALS_INVALID = True
-                return False
-        except Exception as test_error:
-            error_str = str(test_error).lower()
-            # Vérifier à nouveau pour être sûr
-            credentials_errors = [
-                'invalid_grant', 'invalid jwt', 'invalid jwt signature',
-                'permission denied', 'unauthorized', 'authentication'
-            ]
-            if any(err in error_str for err in credentials_errors):
-                log("❌ Credentials Firebase invalides détectés. Firestore désactivé.", 'error')
-                log("💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide et complet", 'info')
-                log("💡 Vous devrez peut-être régénérer les credentials depuis la console Firebase", 'info')
-                FIREBASE_INITIALIZED = False
-                FIREBASE_CREDENTIALS_INVALID = True
-                return False
-            # Autres erreurs sont OK (collection n'existe pas, etc.)
-            # On continue l'initialisation car les credentials semblent valides
-        
-        FIREBASE_INITIALIZED = True
-        log(f"✅ Firebase initialisé avec succès (Project ID: {project_id})", 'success')
-        return True
-        
     except Exception as e:
-        log(f"❌ Erreur initialisation Firebase: {e}", 'error')
+        log(f"❌ Erreur initialisation base de données: {e}", 'error')
         import traceback
         traceback.print_exc()
         return False
 
-def save_to_firestore(collection, doc_id, data):
-    """Sauvegarde des données dans Firestore"""
-    global db, FIREBASE_CREDENTIALS_INVALID, FIREBASE_INITIALIZED
-    
-    # Vérifier le flag d'erreur pour éviter les tentatives répétées
-    if FIREBASE_CREDENTIALS_INVALID:
-        return False
-    
-    if not FIREBASE_INITIALIZED or not db:
-        return False
-    
+def migrate_json_to_sqlite():
+    """Migre les données depuis les fichiers JSON vers SQLite (une seule fois)"""
     try:
-        doc_ref = db.collection(collection).document(doc_id)
-        # Créer une copie pour ne pas modifier l'original (évite erreur JSON serialization)
-        firestore_data = data.copy()
-        # Ajouter un timestamp serveur uniquement pour Firestore
-        firestore_data['_server_timestamp'] = firestore.SERVER_TIMESTAMP
-        doc_ref.set(firestore_data, merge=True)
-        return True
-    except Exception as e:
-        error_str = str(e).lower()
-        # Vérifier si c'est une erreur de credentials
-        credentials_errors = [
-            'invalid_grant', 'invalid jwt', 'invalid jwt signature',
-            'permission denied', 'unauthorized', 'authentication',
-            'invalid credentials', 'invalid key'
-        ]
-        if any(err in error_str for err in credentials_errors):
-            # Marquer comme invalide et ne plus réessayer
-            FIREBASE_CREDENTIALS_INVALID = True
-            FIREBASE_INITIALIZED = False
-            log("❌ Credentials Firebase invalides détectés lors de la sauvegarde. Firestore désactivé.", 'error')
-            return False
-        # Autres erreurs : log une seule fois
-        log(f"⚠️ Erreur sauvegarde Firestore ({collection}/{doc_id}): {e}", 'warning')
-        return False
-
-def load_from_firestore(collection, doc_id):
-    """Charge des données depuis Firestore avec timeout"""
-    global db, FIREBASE_CREDENTIALS_INVALID, FIREBASE_INITIALIZED
-    
-    # Vérifier le flag d'erreur pour éviter les tentatives répétées
-    if FIREBASE_CREDENTIALS_INVALID:
-        return None
-    
-    if not FIREBASE_INITIALIZED or not db:
-        return None
-    
-    def _load():
-        try:
-            doc_ref = db.collection(collection).document(doc_id)
-            doc = doc_ref.get()
-            if doc.exists:
-                data = doc.to_dict()
-                # Retirer le timestamp serveur si présent
-                data.pop('_server_timestamp', None)
-                return data
-            return None
-        except Exception as e:
-            raise e
-    
-    try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_load)
-            result = future.result(timeout=15)  # Timeout de 15 secondes
-            return result
-    except FutureTimeoutError:
-        log(f"⏱️ Timeout (15s) lors du chargement Firestore ({collection}/{doc_id})", 'warning')
-        return None
-    except Exception as e:
-        error_str = str(e).lower()
-        # Vérifier si c'est une erreur de credentials
-        credentials_errors = [
-            'invalid_grant', 'invalid jwt', 'invalid jwt signature',
-            'permission denied', 'unauthorized', 'authentication',
-            'invalid credentials', 'invalid key'
-        ]
-        if any(err in error_str for err in credentials_errors):
-            # Marquer comme invalide et ne plus réessayer
-            FIREBASE_CREDENTIALS_INVALID = True
-            FIREBASE_INITIALIZED = False
-            log("❌ Credentials Firebase invalides détectés lors du chargement. Firestore désactivé.", 'error')
-            return None
-        # Autres erreurs : log une seule fois
-        log(f"⚠️ Erreur chargement Firestore ({collection}/{doc_id}): {e}", 'warning')
-        return None
-
-def delete_from_firestore(collection, doc_id):
-    """Supprime un document de Firestore"""
-    global db, FIREBASE_CREDENTIALS_INVALID, FIREBASE_INITIALIZED
-    
-    # Vérifier le flag d'erreur pour éviter les tentatives répétées
-    if FIREBASE_CREDENTIALS_INVALID:
-        return False
-    
-    if not FIREBASE_INITIALIZED or not db:
-        return False
-    
-    try:
-        doc_ref = db.collection(collection).document(doc_id)
-        doc_ref.delete()
-        return True
-    except Exception as e:
-        error_str = str(e).lower()
-        # Vérifier si c'est une erreur de credentials
-        credentials_errors = [
-            'invalid_grant', 'invalid jwt', 'invalid jwt signature',
-            'permission denied', 'unauthorized', 'authentication',
-            'invalid credentials', 'invalid key'
-        ]
-        if any(err in error_str for err in credentials_errors):
-            # Marquer comme invalide et ne plus réessayer
-            FIREBASE_CREDENTIALS_INVALID = True
-            FIREBASE_INITIALIZED = False
-            log("❌ Credentials Firebase invalides détectés lors de la suppression. Firestore désactivé.", 'error')
-            return False
-        # Autres erreurs : log une seule fois
-        log(f"⚠️ Erreur suppression Firestore ({collection}/{doc_id}): {e}", 'warning')
-        return False
-
-def get_all_from_firestore(collection):
-    """Récupère tous les documents d'une collection Firestore avec timeout"""
-    global db, FIREBASE_CREDENTIALS_INVALID, FIREBASE_INITIALIZED
-    
-    # Vérifier le flag d'erreur pour éviter les tentatives répétées
-    if FIREBASE_CREDENTIALS_INVALID:
-        return []
-    
-    if not FIREBASE_INITIALIZED or not db:
-        return []
-    
-    def _get_all():
-        try:
-            # Utiliser limit() pour éviter les blocages sur collections vides
-            docs = db.collection(collection).limit(1000).stream()
-            result = []
-            for doc in docs:
-                try:
-                    data = doc.to_dict()
-                    if data:
-                        data.pop('_server_timestamp', None)
-                        result.append(data)
-                except Exception as doc_error:
-                    log(f"⚠️ Erreur parsing document dans {collection}: {doc_error}", 'warning')
-                    continue
-            return result
-        except Exception as e:
-            raise e
-    
-    try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_get_all)
-            result = future.result(timeout=15)  # Timeout de 15 secondes
-            return result
-    except FutureTimeoutError:
-        log(f"⏱️ Timeout (15s) lors de la récupération collection Firestore ({collection})", 'warning')
-        return []
-    except Exception as e:
-        error_str = str(e).lower()
-        # Vérifier si c'est une erreur de credentials
-        credentials_errors = [
-            'invalid_grant', 'invalid jwt', 'invalid jwt signature',
-            'permission denied', 'unauthorized', 'authentication',
-            'invalid credentials', 'invalid key'
-        ]
-        if any(err in error_str for err in credentials_errors):
-            # Marquer comme invalide et ne plus réessayer
-            FIREBASE_CREDENTIALS_INVALID = True
-            FIREBASE_INITIALIZED = False
-            log("❌ Credentials Firebase invalides détectés lors de la récupération. Firestore désactivé.", 'error')
-            return []
-        # Autres erreurs : log une seule fois
-        log(f"⚠️ Erreur récupération collection Firestore ({collection}): {e}", 'warning')
-        return []
-
-def load_all_from_firestore():
-    """Charge toutes les données depuis Firestore au démarrage (non-bloquant avec timeout global)"""
-    global FIREBASE_INITIALIZED
-    
-    if not FIREBASE_INITIALIZED:
-        return False
-    
-    def _load_all():
-        """Fonction interne pour charger toutes les données"""
-        try:
-            log("📥 Chargement des données depuis Firestore...", 'info')
-            
-            # Charger les matchs (avec gestion d'erreur individuelle)
-            try:
-                matches = get_all_from_firestore('matches')
-                if matches:
-                    with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                        json.dump(matches, f, ensure_ascii=False, indent=2)
-                    log(f"✅ {len(matches)} match(s) chargé(s) depuis Firestore", 'success')
-                else:
-                    log("ℹ️ Aucun match trouvé dans Firestore (collection vide - première utilisation)", 'info')
-            except Exception as e:
-                log(f"⚠️ Erreur chargement matchs depuis Firestore: {e}", 'warning')
-            
-            # Charger le status
-            try:
-                status = load_from_firestore('status', 'current')
-                if status:
-                    with open('status.json', 'w', encoding='utf-8') as f:
-                        json.dump(status, f, ensure_ascii=False, indent=2)
-                    log("✅ Status chargé depuis Firestore", 'success')
-                else:
-                    log("ℹ️ Aucun status trouvé dans Firestore (première utilisation)", 'info')
-            except Exception as e:
-                log(f"⚠️ Erreur chargement status depuis Firestore: {e}", 'warning')
-            
-            # Charger les analytics
-            try:
-                analytics = load_from_firestore('analytics', 'current')
-                if analytics:
-                    with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
-                        json.dump(analytics, f, ensure_ascii=False, indent=2)
-                    log("✅ Analytics chargé(s) depuis Firestore", 'success')
-                else:
-                    log("ℹ️ Aucun analytics trouvé dans Firestore (première utilisation)", 'info')
-            except Exception as e:
-                log(f"⚠️ Erreur chargement analytics depuis Firestore: {e}", 'warning')
-            
-            # Charger le cache Groq
-            try:
-                groq_cache_docs = get_all_from_firestore('groq_cache')
-                if groq_cache_docs:
-                    groq_cache = {}
-                    for doc in groq_cache_docs:
-                        match_name = doc.get('match_name', '')
-                        if match_name:
-                            groq_cache[match_name] = doc
-                    with open('groq_cache.json', 'w', encoding='utf-8') as f:
-                        json.dump(groq_cache, f, ensure_ascii=False, indent=2)
-                    log(f"✅ Cache Groq chargé depuis Firestore ({len(groq_cache)} entrée(s))", 'success')
-                else:
-                    log("ℹ️ Aucun cache Groq trouvé dans Firestore (première utilisation)", 'info')
-            except Exception as e:
-                log(f"⚠️ Erreur chargement cache Groq depuis Firestore: {e}", 'warning')
-            
-            # Charger l'historique des détections
-            try:
-                detections = get_all_from_firestore('detections')
-                if detections:
-                    detections.sort(key=lambda x: x.get('date', ''), reverse=True)
-                    detections = detections[:50]
-                    with open(DETECTIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
-                        json.dump(detections, f, ensure_ascii=False, indent=2)
-                    log(f"✅ {len(detections)} détection(s) chargée(s) depuis Firestore", 'success')
-                else:
-                    log("ℹ️ Aucune détection trouvée dans Firestore (première utilisation)", 'info')
-            except Exception as e:
-                log(f"⚠️ Erreur chargement détections depuis Firestore: {e}", 'warning')
-            
-            log("✅ Chargement Firestore terminé (collections vides = première utilisation, c'est normal)", 'success')
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Vérifier si la migration a déjà été faite (si matches n'est pas vide)
+        cursor.execute('SELECT COUNT(*) FROM matches')
+        if cursor.fetchone()[0] > 0:
+            log("ℹ️ Migration déjà effectuée, données JSON ignorées", 'info')
             return True
-            
-        except Exception as e:
-            log(f"⚠️ Erreur chargement depuis Firestore: {e}", 'warning')
-            import traceback
-            traceback.print_exc()
-            return False
-    
-    # Exécuter avec un timeout global de 20 secondes
-    try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_load_all)
-            result = future.result(timeout=20)  # Timeout global de 20 secondes
-            return result
-    except FutureTimeoutError:
-        log("⏱️ Timeout global (20s) lors du chargement Firestore - Désactivation de Firestore pour cette session", 'error')
-        FIREBASE_INITIALIZED = False  # Désactiver Firestore pour éviter d'autres blocages
-        log("ℹ️ Le bot continuera avec les fichiers JSON locaux uniquement", 'info')
-        return False
+        
+        log("📥 Migration des données JSON vers SQLite...", 'info')
+        
+        # Migrer matches.json
+        if os.path.exists(MATCHES_FILE):
+            try:
+                with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
+                    matches = json.load(f)
+                for match in matches:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO matches (nom, url, competition, date, time, lieu)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        match.get('nom'),
+                        match.get('url'),
+                        match.get('competition'),
+                        match.get('date'),
+                        match.get('time'),
+                        match.get('lieu')
+                    ))
+                log(f"✅ {len(matches)} match(s) migré(s) depuis matches.json", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur migration matches.json: {e}", 'warning')
+        
+        # Migrer status.json
+        if os.path.exists('status.json'):
+            try:
+                with open('status.json', 'r', encoding='utf-8') as f:
+                    status_data = json.load(f)
+                cursor.execute('''
+                    INSERT OR REPLACE INTO status (id, data, updated_at)
+                    VALUES (1, ?, CURRENT_TIMESTAMP)
+                ''', (json.dumps(status_data, ensure_ascii=False),))
+                log("✅ Status migré depuis status.json", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur migration status.json: {e}", 'warning')
+        
+        # Migrer analytics.json
+        if os.path.exists(ANALYTICS_FILE):
+            try:
+                with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
+                    analytics_data = json.load(f)
+                cursor.execute('''
+                    INSERT OR REPLACE INTO analytics (id, data, updated_at)
+                    VALUES (1, ?, CURRENT_TIMESTAMP)
+                ''', (json.dumps(analytics_data, ensure_ascii=False),))
+                log("✅ Analytics migré(s) depuis analytics.json", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur migration analytics.json: {e}", 'warning')
+        
+        # Migrer groq_cache.json
+        if os.path.exists(GROQ_CACHE_FILE):
+            try:
+                with open(GROQ_CACHE_FILE, 'r', encoding='utf-8') as f:
+                    groq_cache = json.load(f)
+                for match_name, cache_data in groq_cache.items():
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO groq_cache (match_name, data, last_updated)
+                        VALUES (?, ?, ?)
+                    ''', (
+                        match_name,
+                        json.dumps(cache_data, ensure_ascii=False),
+                        cache_data.get('last_updated', datetime.now().isoformat())
+                    ))
+                log(f"✅ {len(groq_cache)} entrée(s) de cache Groq migrée(s)", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur migration groq_cache.json: {e}", 'warning')
+        
+        # Migrer detections_history.json
+        if os.path.exists(DETECTIONS_HISTORY_FILE):
+            try:
+                with open(DETECTIONS_HISTORY_FILE, 'r', encoding='utf-8') as f:
+                    detections = json.load(f)
+                for detection in detections:
+                    cursor.execute('''
+                        INSERT INTO detections (match, nb_places, date, date_formatee)
+                        VALUES (?, ?, ?, ?)
+                    ''', (
+                        detection.get('match'),
+                        detection.get('nb_places'),
+                        detection.get('date'),
+                        detection.get('date_formatee')
+                    ))
+                log(f"✅ {len(detections)} détection(s) migrée(s)", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur migration detections_history.json: {e}", 'warning')
+        
+        conn.commit()
+        log("✅ Migration terminée", 'success')
+        return True
     except Exception as e:
-        log(f"⚠️ Erreur lors du chargement Firestore: {e}", 'warning')
+        log(f"❌ Erreur lors de la migration: {e}", 'error')
+        import traceback
+        traceback.print_exc()
         return False
+
+# Fonctions SQLite pour remplacer Firebase
+def save_match_to_db(match_data):
+    """Sauvegarde ou met à jour un match dans la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO matches (nom, url, competition, date, time, lieu)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            match_data.get('nom'),
+            match_data.get('url'),
+            match_data.get('competition'),
+            match_data.get('date'),
+            match_data.get('time'),
+            match_data.get('lieu')
+        ))
+        conn.commit()
+        return True
+    except Exception as e:
+        log(f"⚠️ Erreur sauvegarde match dans SQLite: {e}", 'warning')
+        return False
+
+def load_matches_from_db():
+    """Charge tous les matchs depuis la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT nom, url, competition, date, time, lieu FROM matches ORDER BY created_at DESC')
+        rows = cursor.fetchall()
+        matches = []
+        for row in rows:
+            matches.append({
+                'nom': row['nom'],
+                'url': row['url'],
+                'competition': row['competition'],
+                'date': row['date'],
+                'time': row['time'],
+                'lieu': row['lieu']
+            })
+        return matches
+    except Exception as e:
+        log(f"⚠️ Erreur chargement matchs depuis SQLite: {e}", 'warning')
+        return []
+
+def delete_match_from_db(match_nom):
+    """Supprime un match de la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM matches WHERE nom = ?', (match_nom,))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        log(f"⚠️ Erreur suppression match dans SQLite: {e}", 'warning')
+        return False
+
+def save_status_to_db(status_data):
+    """Sauvegarde le status dans la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO status (id, data, updated_at)
+            VALUES (1, ?, CURRENT_TIMESTAMP)
+        ''', (json.dumps(status_data, ensure_ascii=False),))
+        conn.commit()
+        return True
+    except Exception as e:
+        log(f"⚠️ Erreur sauvegarde status dans SQLite: {e}", 'warning')
+        return False
+
+def load_status_from_db():
+    """Charge le status depuis la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT data FROM status WHERE id = 1')
+        row = cursor.fetchone()
+        if row:
+            return json.loads(row['data'])
+        return None
+    except Exception as e:
+        log(f"⚠️ Erreur chargement status depuis SQLite: {e}", 'warning')
+        return None
+
+def save_analytics_to_db(analytics_data):
+    """Sauvegarde les analytics dans la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO analytics (id, data, updated_at)
+            VALUES (1, ?, CURRENT_TIMESTAMP)
+        ''', (json.dumps(analytics_data, ensure_ascii=False),))
+        conn.commit()
+        return True
+    except Exception as e:
+        log(f"⚠️ Erreur sauvegarde analytics dans SQLite: {e}", 'warning')
+        return False
+
+def load_analytics_from_db():
+    """Charge les analytics depuis la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT data FROM analytics WHERE id = 1')
+        row = cursor.fetchone()
+        if row:
+            return json.loads(row['data'])
+        return None
+    except Exception as e:
+        log(f"⚠️ Erreur chargement analytics depuis SQLite: {e}", 'warning')
+        return None
+
+def save_groq_cache_to_db(match_name, cache_data):
+    """Sauvegarde le cache Groq dans la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO groq_cache (match_name, data, last_updated)
+            VALUES (?, ?, ?)
+        ''', (
+            match_name,
+            json.dumps(cache_data, ensure_ascii=False),
+            cache_data.get('last_updated', datetime.now().isoformat())
+        ))
+        conn.commit()
+        return True
+    except Exception as e:
+        log(f"⚠️ Erreur sauvegarde cache Groq dans SQLite: {e}", 'warning')
+        return False
+
+def load_groq_cache_from_db(match_name):
+    """Charge le cache Groq depuis la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT data FROM groq_cache WHERE match_name = ?', (match_name,))
+        row = cursor.fetchone()
+        if row:
+            return json.loads(row['data'])
+        return None
+    except Exception as e:
+        log(f"⚠️ Erreur chargement cache Groq depuis SQLite: {e}", 'warning')
+        return None
+
+def save_detection_to_db(detection_data):
+    """Sauvegarde une détection dans la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO detections (match, nb_places, date, date_formatee)
+            VALUES (?, ?, ?, ?)
+        ''', (
+            detection_data.get('match'),
+            detection_data.get('nb_places'),
+            detection_data.get('date'),
+            detection_data.get('date_formatee')
+        ))
+        conn.commit()
+        
+        # Garder seulement les 50 dernières détections
+        cursor.execute('''
+            DELETE FROM detections 
+            WHERE id NOT IN (
+                SELECT id FROM detections 
+                ORDER BY created_at DESC 
+                LIMIT 50
+            )
+        ''')
+        conn.commit()
+        return True
+    except Exception as e:
+        log(f"⚠️ Erreur sauvegarde détection dans SQLite: {e}", 'warning')
+        return False
+
+def load_detections_from_db(limit=50):
+    """Charge les détections depuis la base de données"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT match, nb_places, date, date_formatee 
+            FROM detections 
+            ORDER BY created_at DESC 
+            LIMIT ?
+        ''', (limit,))
+        rows = cursor.fetchall()
+        detections = []
+        for row in rows:
+            detections.append({
+                'match': row['match'],
+                'nb_places': row['nb_places'],
+                'date': row['date'],
+                'date_formatee': row['date_formatee']
+            })
+        return detections
+    except Exception as e:
+        log(f"⚠️ Erreur chargement détections depuis SQLite: {e}", 'warning')
+        return []
 
 # ====================
 # HISTORIQUE DES DÉTECTIONS PMR
 # ====================
-# DETECTIONS_HISTORY_FILE est défini plus haut avec les autres constantes
 
 def charger_historique_detections():
-    """Charge l'historique des détections PMR"""
+    """Charge l'historique des détections PMR depuis SQLite"""
     try:
-        # Essayer Firestore d'abord
-        if FIREBASE_INITIALIZED:
-            detections = get_all_from_firestore('detections')
-            if detections:
-                # Trier par date (plus récent en premier)
-                detections.sort(key=lambda x: x.get('date', ''), reverse=True)
-                return detections[:50]  # Garder seulement les 50 dernières
-        
-        # Fallback sur fichier local
-        if os.path.exists(DETECTIONS_HISTORY_FILE):
-            with open(DETECTIONS_HISTORY_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+        detections = load_detections_from_db(limit=50)
+        # Sauvegarder aussi dans le fichier local (backup)
+        if detections:
+            with open(DETECTIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
+                json.dump(detections, f, ensure_ascii=False, indent=2)
+        return detections
     except Exception as e:
         log(f"⚠️ Erreur chargement historique: {e}", 'warning')
+        # Fallback sur fichier local
+        if os.path.exists(DETECTIONS_HISTORY_FILE):
+            try:
+                with open(DETECTIONS_HISTORY_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
     return []
 
 def sauvegarder_detection(match_nom, nb_places):
     """Sauvegarde une détection PMR dans l'historique"""
     try:
-        historique = charger_historique_detections()
         detection = {
             "match": match_nom,
             "nb_places": nb_places,
             "date": datetime.now().isoformat(),
             "date_formatee": formater_date_francaise(datetime.now())
         }
-        historique.append(detection)
-        # Garder seulement les 50 dernières détections
-        if len(historique) > 50:
-            historique = historique[-50:]
-        
-        # Sauvegarder dans Firestore
-        if FIREBASE_INITIALIZED:
-            # Supprimer les anciennes détections au-delà de 50
-            all_detections = get_all_from_firestore('detections')
-            all_detections.sort(key=lambda x: x.get('date', ''), reverse=True)
-            # Supprimer les anciennes
-            for old_detection in all_detections[50:]:
-                detection_id = old_detection.get('date', '') + '_' + old_detection.get('match', '').replace(' ', '_')
-                delete_from_firestore('detections', detection_id)
-            # Ajouter la nouvelle
-            detection_id = detection['date'] + '_' + detection['match'].replace(' ', '_')
-            save_to_firestore('detections', detection_id, detection.copy())
+        # Sauvegarder dans SQLite (gère automatiquement la limite de 50)
+        save_detection_to_db(detection)
         
         # Sauvegarder aussi dans le fichier local (backup)
+        historique = charger_historique_detections()
+        historique.append(detection)
+        if len(historique) > 50:
+            historique = historique[-50:]
         with open(DETECTIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
             json.dump(historique, f, ensure_ascii=False, indent=2)
     except Exception as e:
         log(f"⚠️ Erreur sauvegarde détection: {e}", 'warning')
 
-# Charger les matchs depuis le fichier JSON ou Firestore
+# Charger les matchs depuis SQLite ou fichier JSON
 def charger_matchs():
-    """Charge les matchs depuis le fichier JSON ou Firestore (fichier local en priorité pour éviter les blocages)"""
+    """Charge les matchs depuis SQLite (fichier local en backup)"""
     try:
-        # PRIORITÉ 1 : Fichier local (toujours rapide, pas de blocage)
-        try:
-            if os.path.exists(MATCHES_FILE):
+        # PRIORITÉ 1 : SQLite
+        matches = load_matches_from_db()
+        if matches:
+            # Sauvegarder dans le fichier local pour backup
+            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                json.dump(matches, f, ensure_ascii=False, indent=2)
+            log(f"📂 {len(matches)} match(s) chargé(s) depuis SQLite", 'info')
+            return matches
+        
+        # PRIORITÉ 2 : Fichier local (fallback)
+        if os.path.exists(MATCHES_FILE):
+            try:
                 with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
                     matches = json.load(f)
                 log(f"📂 matches.json chargé: {len(matches)} match(s)", 'info')
+                # Migrer vers SQLite
+                for match in matches:
+                    save_match_to_db(match)
                 return matches
-        except Exception as e:
-            log(f"⚠️ Erreur lecture matches.json: {e}", 'warning')
-        
-        # PRIORITÉ 2 : Essayer Firestore seulement si le fichier n'existe pas (avec timeout)
-        if FIREBASE_INITIALIZED:
-            try:
-                matches = get_all_from_firestore('matches')
-                if matches:
-                    # Sauvegarder dans le fichier local pour les prochaines fois
-                    with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                        json.dump(matches, f, ensure_ascii=False, indent=2)
-                    log(f"📂 {len(matches)} match(s) chargé(s) depuis Firestore", 'success')
-                    return matches
             except Exception as e:
-                log(f"⚠️ Erreur chargement Firestore, utilisation matchs par défaut: {e}", 'warning')
+                log(f"⚠️ Erreur lecture matches.json: {e}", 'warning')
         
         # PRIORITÉ 3 : Matchs par défaut si rien n'existe
         matchs_default = [
@@ -705,6 +537,9 @@ def charger_matchs():
                 "lieu": "Parc des Princes"
             }
         ]
+        # Sauvegarder dans SQLite et fichier local
+        for match in matchs_default:
+            save_match_to_db(match)
         with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
             json.dump(matchs_default, f, ensure_ascii=False, indent=2)
         log(f"📂 matches.json créé avec {len(matchs_default)} match(s) par défaut", 'info')
@@ -1008,22 +843,21 @@ def get_comparison_matches(match_name, home_team, limit=3):
 def get_cached_groq_data(match_name):
     """Récupère les données en cache si elles existent et sont récentes (< 24h)"""
     try:
-        # Essayer Firestore d'abord
-        if FIREBASE_INITIALIZED:
-            cached_data = load_from_firestore('groq_cache', match_name)
-            if cached_data:
-                last_updated_str = cached_data.get('last_updated', '2000-01-01T00:00:00')
-                try:
-                    last_updated = datetime.fromisoformat(last_updated_str)
-                    hours_diff = (datetime.now() - last_updated).total_seconds() / 3600
-                    
-                    if hours_diff < 24:
-                        log(f"✅ Données Groq en cache pour {match_name} depuis Firestore ({hours_diff:.1f}h)", 'info')
-                        return cached_data
-                    else:
-                        log(f"⏰ Cache expiré pour {match_name} ({hours_diff:.1f}h)", 'info')
-                except Exception:
-                    pass
+        # Essayer SQLite d'abord
+        cached_data = load_groq_cache_from_db(match_name)
+        if cached_data:
+            last_updated_str = cached_data.get('last_updated', '2000-01-01T00:00:00')
+            try:
+                last_updated = datetime.fromisoformat(last_updated_str)
+                hours_diff = (datetime.now() - last_updated).total_seconds() / 3600
+                
+                if hours_diff < 24:
+                    log(f"✅ Données Groq en cache pour {match_name} depuis SQLite ({hours_diff:.1f}h)", 'info')
+                    return cached_data
+                else:
+                    log(f"⏰ Cache expiré pour {match_name} ({hours_diff:.1f}h)", 'info')
+            except Exception:
+                pass
         
         # Fallback sur fichier local
         try:
@@ -1053,9 +887,8 @@ def save_groq_cache(match_name, data):
         data['last_updated'] = datetime.now().isoformat()
         data['match_name'] = match_name
         
-        # Sauvegarder dans Firestore
-        if FIREBASE_INITIALIZED:
-            save_to_firestore('groq_cache', match_name, data.copy())
+        # Sauvegarder dans SQLite
+        save_groq_cache_to_db(match_name, data)
         
         # Sauvegarder aussi dans le fichier local (backup)
         cache = {}
@@ -1072,20 +905,13 @@ def save_groq_cache(match_name, data):
     except Exception as e:
         log(f"⚠️ Erreur sauvegarde cache: {e}", 'warning')
 
-# ✅ INITIALISATION FIREBASE AU DÉMARRAGE (non-bloquant)
-if init_firebase():
-    # Charger toutes les données depuis Firestore dans un thread séparé pour ne pas bloquer le démarrage
-    def load_firestore_async():
-        try:
-            load_all_from_firestore()
-        except Exception as e:
-            log(f"⚠️ Erreur chargement Firestore asynchrone: {e}", 'warning')
-    
-    # Lancer dans un thread pour ne pas bloquer le démarrage du bot
-    threading.Thread(target=load_firestore_async, daemon=True).start()
-    log("ℹ️ Chargement Firestore en arrière-plan (non-bloquant)", 'info')
+# ✅ INITIALISATION SQLITE AU DÉMARRAGE
+if init_database():
+    # Migrer les données JSON vers SQLite si nécessaire (une seule fois)
+    migrate_json_to_sqlite()
+    log("✅ Base de données SQLite prête", 'success')
 else:
-    log("ℹ️ Firestore non configuré, utilisation des fichiers JSON locaux", 'info')
+    log("⚠️ Erreur initialisation SQLite, utilisation des fichiers JSON locaux uniquement", 'warning')
 
 # ✅ LISTE DES MATCHS À SURVEILLER (chargée dynamiquement)
 MATCHS = charger_matchs()
@@ -1126,7 +952,7 @@ def envoyer_message(msg):
         print("Erreur Telegram:", e)
 
 def sauvegarder_status():
-    """Sauvegarde l'état du bot dans status.json pour le site web ET dans Firestore"""
+    """Sauvegarde l'état du bot dans status.json pour le site web ET dans SQLite"""
     status = {
         "bot_actif": True,
         "derniere_mise_a_jour": formater_date_francaise(datetime.now()),
@@ -1186,9 +1012,8 @@ def sauvegarder_status():
         "matchs_surveilles": nb_matchs
     }
     
-    # Sauvegarder dans Firestore (avec copie pour ne pas modifier l'original)
-    if FIREBASE_INITIALIZED:
-        save_to_firestore('status', 'current', status.copy())
+    # Sauvegarder dans SQLite
+    save_status_to_db(status)
     
     # Sauvegarder aussi dans le fichier local (backup) - l'original n'a pas été modifié
     import os
@@ -1390,11 +1215,8 @@ def api_add_match():
         }
         matches.append(new_match)
         
-        # Sauvegarder dans Firestore
-        if FIREBASE_INITIALIZED:
-            # Utiliser le nom du match comme ID (sanitize pour Firestore)
-            match_id = nom.replace(' ', '_').replace('/', '_')
-            save_to_firestore('matches', match_id, new_match.copy())
+        # Sauvegarder dans SQLite
+        save_match_to_db(new_match)
         
         # Sauvegarder aussi dans le fichier local (backup)
         with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
@@ -1445,10 +1267,8 @@ def api_delete_match(index):
         if 0 <= index < len(matches):
             deleted = matches.pop(index)
             
-            # Supprimer de Firestore
-            if FIREBASE_INITIALIZED:
-                match_id = deleted.get('nom', '').replace(' ', '_').replace('/', '_')
-                delete_from_firestore('matches', match_id)
+            # Supprimer de SQLite
+            delete_match_from_db(deleted.get('nom', ''))
             
             # Sauvegarder aussi dans le fichier local (backup)
             with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
@@ -1513,10 +1333,8 @@ def api_force_check(index):
 def api_get_analytics():
     """Retourne les statistiques du site web"""
     try:
-        # Essayer Firestore d'abord
-        analytics = None
-        if FIREBASE_INITIALIZED:
-            analytics = load_from_firestore('analytics', 'current')
+        # Essayer SQLite d'abord
+        analytics = load_analytics_from_db()
         
         # Fallback sur fichier local
         if not analytics:
@@ -1569,8 +1387,8 @@ def api_get_analytics():
                     analytics["derniere_date"] = date_actuelle
                     
                     # Sauvegarder dans Firestore
-                    if FIREBASE_INITIALIZED:
-                        save_to_firestore('analytics', 'current', analytics.copy())
+                    # Sauvegarder dans SQLite
+                    save_analytics_to_db(analytics)
                     
                     # Sauvegarder aussi dans le fichier local (backup)
                     with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
@@ -1694,9 +1512,8 @@ def api_track_visitor():
         if analytics["visiteurs_en_ligne"] > analytics.get("pic_connexions", 0):
             analytics["pic_connexions"] = analytics["visiteurs_en_ligne"]
         
-        # Sauvegarder dans Firestore
-        if FIREBASE_INITIALIZED:
-            save_to_firestore('analytics', 'current', analytics.copy())
+        # Sauvegarder dans SQLite
+        save_analytics_to_db(analytics)
         
         # Sauvegarder aussi dans le fichier local (backup)
         with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
@@ -1752,9 +1569,8 @@ def api_track_telegram_click():
         # Incrémenter
         analytics["clics_telegram"] = analytics.get("clics_telegram", 0) + 1
         
-        # Sauvegarder dans Firestore
-        if FIREBASE_INITIALIZED:
-            save_to_firestore('analytics', 'current', analytics.copy())
+        # Sauvegarder dans SQLite
+        save_analytics_to_db(analytics)
         
         # Sauvegarder aussi dans le fichier local (backup)
         with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:

@@ -3,6 +3,8 @@ matches.json
 analytics.json
 groq_cache.json
 detections_history.json
+*.db
+*.db-journal
 __pycache__/
 *.pyc
 *.pyo
