@@ -1116,18 +1116,6 @@
                 }
             }
         }
-                
-                awayContainer.innerHTML = positions.map(pos => `
-                    <div class="flex items-start gap-3 glass p-3 rounded-lg">
-                        <span class="font-mono text-gray-400 min-w-[28px]">${pos.code}</span>
-                        <span class="font-semibold leading-relaxed">${pos.players.join(', ')}</span>
-                    </div>
-                `).join('');
-                console.log('✅ Composition adverse HTML générée et insérée');
-            } else {
-                console.warn('⚠️ Conteneur ou données composition adverse non trouvés');
-            }
-        }
         
         // Fonction pour déterminer si c'est le jour du match
         function estJourDuMatch(match) {
