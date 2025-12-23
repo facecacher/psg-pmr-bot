@@ -1499,7 +1499,7 @@ def api_track_telegram_click():
         
         # Sauvegarder dans Firestore
         if FIREBASE_INITIALIZED:
-            save_to_firestore('analytics', 'current', analytics)
+            save_to_firestore('analytics', 'current', analytics.copy())
         
         # Sauvegarder aussi dans le fichier local (backup)
         with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
