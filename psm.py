@@ -87,36 +87,46 @@ def init_firebase():
             log("⚠️ FIREBASE_PROJECT_ID non défini. Firestore désactivé.", 'warning')
             return False
         
-        # Essayer de charger les credentials depuis une variable d'environnement (JSON stringifié)
+        # PRIORITÉ 1 : Essayer de charger les credentials depuis une variable d'environnement (JSON stringifié)
         cred = None
         if credentials_str:
             try:
                 import json as json_module
                 # Nettoyer la chaîne (enlever les retours à la ligne en début/fin si présents)
                 credentials_str_clean = credentials_str.strip()
+                
+                # Si la chaîne commence par des guillemets, les retirer (certains systèmes ajoutent des guillemets)
+                if credentials_str_clean.startswith('"') and credentials_str_clean.endswith('"'):
+                    credentials_str_clean = credentials_str_clean[1:-1]
+                    # Décoder les échappements JSON
+                    credentials_str_clean = credentials_str_clean.replace('\\n', '\n').replace('\\"', '"')
+                
                 cred_dict = json_module.loads(credentials_str_clean)
                 cred = credentials.Certificate(cred_dict)
-                log("✅ Credentials Firebase chargés depuis FIREBASE_CREDENTIALS", 'success')
+                log("✅ Credentials Firebase chargés depuis FIREBASE_CREDENTIALS (variable d'environnement)", 'success')
             except json.JSONDecodeError as e:
                 log(f"❌ Erreur parsing FIREBASE_CREDENTIALS (JSON invalide): {e}", 'error')
                 log(f"💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide complet", 'info')
                 log(f"💡 Longueur de la chaîne: {len(credentials_str)} caractères", 'info')
+                log(f"💡 Premiers 100 caractères: {credentials_str[:100]}...", 'info')
             except Exception as e:
-                log(f"❌ Erreur chargement credentials Firebase: {e}", 'error')
+                log(f"❌ Erreur chargement credentials Firebase depuis variable: {e}", 'error')
+                import traceback
+                traceback.print_exc()
         
-        # Sinon, essayer depuis un fichier
-        elif credentials_path and os.path.exists(credentials_path):
+        # PRIORITÉ 2 : Essayer depuis un fichier (si variable d'environnement non disponible)
+        if not cred and credentials_path and os.path.exists(credentials_path):
             try:
                 cred = credentials.Certificate(credentials_path)
                 log(f"✅ Credentials Firebase chargés depuis {credentials_path}", 'success')
             except Exception as e:
                 log(f"⚠️ Erreur chargement credentials depuis fichier: {e}", 'warning')
         
-        # Sinon, essayer le fichier par défaut
-        elif os.path.exists('firebase-credentials.json'):
+        # PRIORITÉ 3 : Essayer le fichier par défaut (fallback)
+        if not cred and os.path.exists('firebase-credentials.json'):
             try:
                 cred = credentials.Certificate('firebase-credentials.json')
-                log("✅ Credentials Firebase chargés depuis firebase-credentials.json", 'success')
+                log("✅ Credentials Firebase chargés depuis firebase-credentials.json (fichier local)", 'success')
             except Exception as e:
                 log(f"⚠️ Erreur chargement firebase-credentials.json: {e}", 'warning')
         

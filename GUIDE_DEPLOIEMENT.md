@@ -796,17 +796,20 @@ service cloud.firestore {
 Valeur : votre-project-id (ex: psm-bot-7140d)
 ```
 
-**Variable 2 : `FIREBASE_CREDENTIALS`**
+**Variable 2 : `FIREBASE_CREDENTIALS`** (RECOMMANDÉ)
 ```
-Valeur : Le contenu COMPLET du fichier JSON téléchargé (en une seule ligne, sans retours à la ligne)
+Valeur : Le contenu COMPLET du fichier JSON téléchargé
 ```
 
 > **Comment obtenir la valeur de `FIREBASE_CREDENTIALS` :**
 > 1. Ouvrez le fichier JSON téléchargé à l'étape 4
 > 2. Copiez TOUT le contenu (Ctrl+A, Ctrl+C)
-> 3. Collez-le dans la variable d'environnement (Dokploy gère automatiquement les retours à la ligne)
+> 3. Dans Dokploy, créez une nouvelle variable d'environnement :
+>    - **Nom** : `FIREBASE_CREDENTIALS`
+>    - **Valeur** : Collez le JSON complet (Dokploy gère automatiquement les retours à la ligne)
+> 4. **Important** : Ne mettez PAS de guillemets autour du JSON, collez-le tel quel
 > 
-> **⚠️ Si vous avez des erreurs de parsing JSON**, utilisez la méthode alternative ci-dessous.
+> **Alternative** : Si vous préférez utiliser un fichier, voir la section 6.1 ci-dessous.
 
 #### 6.1 Alternative : Utiliser un fichier (Recommandé si erreur de parsing)
 
