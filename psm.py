@@ -159,9 +159,11 @@ def save_to_firestore(collection, doc_id, data):
     
     try:
         doc_ref = db.collection(collection).document(doc_id)
-        # Ajouter un timestamp serveur
-        data['_server_timestamp'] = firestore.SERVER_TIMESTAMP
-        doc_ref.set(data, merge=True)
+        # Créer une copie pour ne pas modifier l'original (évite erreur JSON serialization)
+        firestore_data = data.copy()
+        # Ajouter un timestamp serveur uniquement pour Firestore
+        firestore_data['_server_timestamp'] = firestore.SERVER_TIMESTAMP
+        doc_ref.set(firestore_data, merge=True)
         return True
     except Exception as e:
         log(f"⚠️ Erreur sauvegarde Firestore ({collection}/{doc_id}): {e}", 'warning')
@@ -401,7 +403,7 @@ def sauvegarder_detection(match_nom, nb_places):
                 delete_from_firestore('detections', detection_id)
             # Ajouter la nouvelle
             detection_id = detection['date'] + '_' + detection['match'].replace(' ', '_')
-            save_to_firestore('detections', detection_id, detection)
+            save_to_firestore('detections', detection_id, detection.copy())
         
         # Sauvegarder aussi dans le fichier local (backup)
         with open(DETECTIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
@@ -798,7 +800,7 @@ def save_groq_cache(match_name, data):
         
         # Sauvegarder dans Firestore
         if FIREBASE_INITIALIZED:
-            save_to_firestore('groq_cache', match_name, data)
+            save_to_firestore('groq_cache', match_name, data.copy())
         
         # Sauvegarder aussi dans le fichier local (backup)
         cache = {}
@@ -929,11 +931,11 @@ def sauvegarder_status():
         "matchs_surveilles": nb_matchs
     }
     
-    # Sauvegarder dans Firestore
+    # Sauvegarder dans Firestore (avec copie pour ne pas modifier l'original)
     if FIREBASE_INITIALIZED:
-        save_to_firestore('status', 'current', status)
+        save_to_firestore('status', 'current', status.copy())
     
-    # Sauvegarder aussi dans le fichier local (backup)
+    # Sauvegarder aussi dans le fichier local (backup) - l'original n'a pas été modifié
     import os
     status_path = 'status.json'
     with open(status_path, 'w', encoding='utf-8') as f:
@@ -1137,7 +1139,7 @@ def api_add_match():
         if FIREBASE_INITIALIZED:
             # Utiliser le nom du match comme ID (sanitize pour Firestore)
             match_id = nom.replace(' ', '_').replace('/', '_')
-            save_to_firestore('matches', match_id, new_match)
+            save_to_firestore('matches', match_id, new_match.copy())
         
         # Sauvegarder aussi dans le fichier local (backup)
         with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
@@ -1313,7 +1315,7 @@ def api_get_analytics():
                     
                     # Sauvegarder dans Firestore
                     if FIREBASE_INITIALIZED:
-                        save_to_firestore('analytics', 'current', analytics)
+                        save_to_firestore('analytics', 'current', analytics.copy())
                     
                     # Sauvegarder aussi dans le fichier local (backup)
                     with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
@@ -1439,7 +1441,7 @@ def api_track_visitor():
         
         # Sauvegarder dans Firestore
         if FIREBASE_INITIALIZED:
-            save_to_firestore('analytics', 'current', analytics)
+            save_to_firestore('analytics', 'current', analytics.copy())
         
         # Sauvegarder aussi dans le fichier local (backup)
         with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
