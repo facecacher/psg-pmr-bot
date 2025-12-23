@@ -61,6 +61,7 @@ db_conn = None  # Connexion SQLite
 
 def get_db_connection():
     """Obtient ou crée la connexion SQLite"""
+    global db_conn
     # #region agent log
     import json as json_module
     import os
@@ -71,7 +72,6 @@ def get_db_connection():
             f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:get_db_connection:ENTRY","message":"get_db_connection called","data":{"db_conn_is_none":db_conn is None,"db_file":DB_FILE,"db_file_exists":os.path.exists(DB_FILE)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
     except: pass
     # #endregion
-    global db_conn
     if db_conn is None:
         db_conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         db_conn.row_factory = sqlite3.Row  # Permet d'accéder aux colonnes par nom
