@@ -508,25 +508,31 @@ def charger_matchs():
             log(f"📂 {len(matches)} match(s) chargé(s) depuis SQLite", 'info')
             return matches
         
-        # PRIORITÉ 2 : Fichier local (fallback UNIQUEMENT si SQLite n'existe pas encore)
-        # Si SQLite existe mais est vide, on ne restaure PAS depuis matches.json
-        # car cela pourrait restaurer des matchs supprimés intentionnellement
-        if not os.path.exists(DB_FILE) and os.path.exists(MATCHES_FILE):
+        # PRIORITÉ 2 : Fichier local (fallback si SQLite est vide ou n'existe pas)
+        # Si SQLite est vide mais que matches.json existe, restaurer depuis matches.json
+        # (peut arriver après un redéploiement où la DB est recréée)
+        if os.path.exists(MATCHES_FILE):
             try:
                 with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
                     matches = json.load(f)
-                log(f"📂 matches.json chargé: {len(matches)} match(s) (première migration)", 'info')
-                # Migrer vers SQLite (première fois uniquement)
-                for match in matches:
-                    save_match_to_db(match)
-                log(f"✅ {len(matches)} match(s) migré(s) vers SQLite", 'success')
-                return matches
+                
+                if matches and len(matches) > 0:
+                    log(f"📂 matches.json trouvé avec {len(matches)} match(s) - restauration depuis backup", 'info')
+                    # Restaurer dans SQLite
+                    for match in matches:
+                        save_match_to_db(match)
+                    log(f"✅ {len(matches)} match(s) restauré(s) dans SQLite depuis matches.json", 'success')
+                    return matches
+                else:
+                    log(f"ℹ️ matches.json vide ou inexistant", 'info')
             except Exception as e:
                 log(f"⚠️ Erreur lecture matches.json: {e}", 'warning')
-        elif os.path.exists(DB_FILE):
-            # SQLite existe mais est vide = pas de matchs (suppression intentionnelle)
+        
+        # Si on arrive ici, SQLite est vide et matches.json n'existe pas ou est vide
+        if os.path.exists(DB_FILE):
             log(f"ℹ️ Base SQLite vide - aucun match à charger", 'info')
-            return []
+        else:
+            log(f"ℹ️ Base SQLite n'existe pas encore - première installation", 'info')
         
         # PRIORITÉ 3 : Matchs par défaut si rien n'existe (première installation)
         matchs_default = [
@@ -1200,12 +1206,8 @@ def api_add_match():
         except Exception:
             return jsonify({"error": "URL invalide"}), 400
         
-        # Lire les matchs existants
-        try:
-            with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
-                matches = json.load(f)
-        except FileNotFoundError:
-            matches = []
+        # Lire les matchs existants depuis SQLite (source de vérité)
+        matches = charger_matchs()
         
         # Vérifier si le match existe déjà
         for match in matches:
@@ -1230,12 +1232,19 @@ def api_add_match():
         }
         matches.append(new_match)
         
-        # Sauvegarder dans SQLite
-        save_match_to_db(new_match)
+        # Sauvegarder dans SQLite (source de vérité)
+        if save_match_to_db(new_match):
+            log(f"✅ Match sauvegardé dans SQLite: {nom}", 'success')
+        else:
+            log(f"⚠️ Erreur sauvegarde SQLite pour: {nom}", 'warning')
         
         # Sauvegarder aussi dans le fichier local (backup)
-        with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(matches, f, ensure_ascii=False, indent=2)
+        try:
+            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                json.dump(matches, f, ensure_ascii=False, indent=2)
+            log(f"✅ Backup matches.json mis à jour", 'success')
+        except Exception as e:
+            log(f"⚠️ Erreur sauvegarde backup matches.json: {e}", 'warning')
         
         # Mettre à jour status.json immédiatement
         global MATCHS
