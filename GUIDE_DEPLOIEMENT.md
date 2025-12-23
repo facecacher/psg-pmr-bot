@@ -812,27 +812,34 @@ Valeur : Le contenu COMPLET du fichier JSON téléchargé (en une seule ligne, s
 
 Si vous rencontrez des erreurs de parsing JSON avec la variable `FIREBASE_CREDENTIALS`, vous pouvez utiliser un fichier à la place :
 
-**Méthode 1 : Via le Dockerfile (Recommandé)**
+**Méthode 1 : Via le Dockerfile (Recommandé si repo privé)**
 
-1. **Ajoutez le fichier JSON au dépôt** (temporairement, juste pour le déploiement) :
+1. **Ajoutez le fichier JSON au dépôt** :
    - Renommez le fichier téléchargé en `firebase-credentials.json`
    - Placez-le à la racine du projet (même niveau que `psm.py`)
-   - **⚠️ IMPORTANT** : Ajoutez `firebase-credentials.json` au `.gitignore` AVANT de le commiter (déjà fait)
+   - **⚠️ IMPORTANT** : Cette méthode est acceptable UNIQUEMENT si votre repo GitHub est **PRIVÉ** !
+   - Si votre repo est public, utilisez plutôt la variable d'environnement `FIREBASE_CREDENTIALS`
 
-2. **Modifiez le Dockerfile** pour copier le fichier :
-   - Ouvrez `Dockerfile`
-   - Ajoutez cette ligne après `COPY psm.py` :
+2. **Le Dockerfile** copie automatiquement le fichier :
    ```dockerfile
    COPY firebase-credentials.json /app/firebase-credentials.json
    ```
-   - **⚠️ ATTENTION** : Ne commitez JAMAIS le fichier sur GitHub ! Utilisez seulement pour le build.
+   - Le fichier sera copié dans le container au build
 
-3. **Configurez la variable d'environnement dans Dokploy** :
+3. **Commitez le fichier sur GitHub** :
+   ```bash
+   git add firebase-credentials.json Dockerfile
+   git commit -m "Ajout firebase-credentials.json (repo privé)"
+   git push
+   ```
+   - **⚠️ SÉCURITÉ** : Vérifiez que votre repo GitHub est bien **PRIVÉ** avant de commiter !
+
+4. **Configurez la variable d'environnement dans Dokploy** :
    - **Nom** : `FIREBASE_CREDENTIALS_PATH`
    - **Valeur** : `/app/firebase-credentials.json`
    - **Supprimez** la variable `FIREBASE_CREDENTIALS` si elle existe
 
-4. **Déployez** : Le fichier sera copié dans le container au build
+5. **Déployez** : Le fichier sera automatiquement copié dans le container au build
 
 **Méthode 2 : Via un volume mount (Si Dokploy le supporte)**
 

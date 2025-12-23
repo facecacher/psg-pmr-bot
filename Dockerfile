@@ -44,9 +44,9 @@ RUN playwright install-deps chromium || true
 COPY psm.py .
 COPY Site/ ./Site/
 
-# Optionnel : Copier firebase-credentials.json si présent (pour méthode fichier)
-# ⚠️ NE PAS commiter ce fichier sur GitHub !
-# COPY firebase-credentials.json /app/firebase-credentials.json || true
+# Copier firebase-credentials.json si présent
+# ⚠️ Le repo est privé, donc c'est acceptable de commiter ce fichier
+COPY firebase-credentials.json /app/firebase-credentials.json
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
