@@ -627,8 +627,8 @@ def charger_matchs():
             # #region agent log
             try:
                 debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
+                os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+                with open(debug_log_path, 'a', encoding='utf-8') as f:
                     f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:CHECKING_JSON","message":"Checking matches.json","data":{"file_exists":True},"timestamp":int(__import__('time').time()*1000)}) + '\n')
             except: pass
             # #endregion
