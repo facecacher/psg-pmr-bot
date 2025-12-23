@@ -61,10 +61,26 @@ db_conn = None  # Connexion SQLite
 
 def get_db_connection():
     """Obtient ou crée la connexion SQLite"""
+    # #region agent log
+    import json as json_module
+    import os
+    try:
+        debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+        os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+        with open(debug_log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:get_db_connection:ENTRY","message":"get_db_connection called","data":{"db_conn_is_none":db_conn is None,"db_file":DB_FILE,"db_file_exists":os.path.exists(DB_FILE)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+    except: pass
+    # #endregion
     global db_conn
     if db_conn is None:
         db_conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         db_conn.row_factory = sqlite3.Row  # Permet d'accéder aux colonnes par nom
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:get_db_connection:NEW_CONN","message":"New DB connection created","data":{"db_file":DB_FILE},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
     return db_conn
 
 def init_database():
@@ -245,8 +261,24 @@ def migrate_json_to_sqlite():
 # Fonctions SQLite pour remplacer Firebase
 def save_match_to_db(match_data):
     """Sauvegarde ou met à jour un match dans la base de données"""
+    # #region agent log
+    import json as json_module
+    import os
+    try:
+        debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+        os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+        with open(debug_log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"psm.py:save_match_to_db:ENTRY","message":"save_match_to_db called","data":{"match_nom":match_data.get('nom'),"has_url":bool(match_data.get('url')),"db_file_exists":os.path.exists(DB_FILE)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+    except: pass
+    # #endregion
     try:
         conn = get_db_connection()
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:save_match_to_db:AFTER_CONN","message":"DB connection obtained","data":{"conn_is_none":conn is None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         cursor = conn.cursor()
         cursor.execute('''
             INSERT OR REPLACE INTO matches (nom, url, competition, date, time, lieu)
@@ -260,18 +292,52 @@ def save_match_to_db(match_data):
             match_data.get('lieu')
         ))
         conn.commit()
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"psm.py:save_match_to_db:SUCCESS","message":"Match saved successfully","data":{"match_nom":match_data.get('nom'),"rowcount":cursor.rowcount},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         return True
     except Exception as e:
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"psm.py:save_match_to_db:ERROR","message":"Save failed","data":{"match_nom":match_data.get('nom'),"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         log(f"⚠️ Erreur sauvegarde match dans SQLite: {e}", 'warning')
         return False
 
 def load_matches_from_db():
     """Charge tous les matchs depuis la base de données"""
+    # #region agent log
+    import json as json_module
+    import os
+    try:
+        debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+        os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+        with open(debug_log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:ENTRY","message":"load_matches_from_db called","data":{"db_file_exists":os.path.exists(DB_FILE)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+    except: pass
+    # #endregion
     try:
         conn = get_db_connection()
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:load_matches_from_db:AFTER_CONN","message":"DB connection obtained","data":{"conn_is_none":conn is None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         cursor = conn.cursor()
         cursor.execute('SELECT nom, url, competition, date, time, lieu FROM matches ORDER BY created_at DESC')
         rows = cursor.fetchall()
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:AFTER_QUERY","message":"Query executed","data":{"row_count":len(rows)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         matches = []
         for row in rows:
             matches.append({
@@ -282,8 +348,20 @@ def load_matches_from_db():
                 'time': row['time'] if row['time'] else None,  # Convertir '' en None
                 'lieu': row['lieu'] if row['lieu'] else None   # Convertir '' en None
             })
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:RETURN","message":"Returning matches","data":{"match_count":len(matches),"match_names":[m.get('nom') for m in matches]},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         return matches
     except Exception as e:
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:ERROR","message":"Load failed","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         log(f"⚠️ Erreur chargement matchs depuis SQLite: {e}", 'warning')
         return []
 
@@ -495,9 +573,25 @@ def sauvegarder_detection(match_nom, nb_places):
 # Charger les matchs depuis SQLite ou fichier JSON
 def charger_matchs():
     """Charge les matchs depuis SQLite (fichier local en backup)"""
+    # #region agent log
+    import json as json_module
+    import os
+    try:
+        debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+        os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+        with open(debug_log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:ENTRY","message":"charger_matchs called","data":{"db_file_exists":os.path.exists(DB_FILE),"matches_file_exists":os.path.exists(MATCHES_FILE)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+    except: pass
+    # #endregion
     try:
         # PRIORITÉ 1 : SQLite (source de vérité)
         matches = load_matches_from_db()
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:AFTER_SQLITE","message":"After load from SQLite","data":{"match_count":len(matches) if matches else 0,"matches":matches},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         if matches:
             # Sauvegarder dans le fichier local pour backup
             try:
@@ -512,10 +606,22 @@ def charger_matchs():
         # Si SQLite est vide mais que matches.json existe, restaurer depuis matches.json
         # (peut arriver après un redéploiement où la DB est recréée)
         if os.path.exists(MATCHES_FILE):
+            # #region agent log
+            try:
+                with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                    f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:CHECKING_JSON","message":"Checking matches.json","data":{"file_exists":True},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+            except: pass
+            # #endregion
             try:
                 with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
                     matches = json.load(f)
                 
+                # #region agent log
+                try:
+                    with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                        f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:JSON_LOADED","message":"matches.json loaded","data":{"match_count":len(matches) if matches else 0,"matches":matches},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+                except: pass
+                # #endregion
                 if matches and len(matches) > 0:
                     log(f"📂 matches.json trouvé avec {len(matches)} match(s) - restauration depuis backup", 'info')
                     # Restaurer dans SQLite
@@ -526,6 +632,12 @@ def charger_matchs():
                 else:
                     log(f"ℹ️ matches.json vide ou inexistant", 'info')
             except Exception as e:
+                # #region agent log
+                try:
+                    with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                        f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:JSON_ERROR","message":"Error reading matches.json","data":{"error":str(e)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+                except: pass
+                # #endregion
                 log(f"⚠️ Erreur lecture matches.json: {e}", 'warning')
         
         # Si on arrive ici, SQLite est vide et matches.json n'existe pas ou est vide
@@ -1208,6 +1320,13 @@ def api_add_match():
         
         # Lire les matchs existants depuis SQLite (source de vérité)
         matches = charger_matchs()
+        # #region agent log
+        import json as json_module
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"psm.py:api_add_match:AFTER_CHARGER","message":"After charger_matchs in api_add_match","data":{"existing_count":len(matches),"new_match_nom":nom},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         
         # Vérifier si le match existe déjà
         for match in matches:
@@ -1233,7 +1352,14 @@ def api_add_match():
         matches.append(new_match)
         
         # Sauvegarder dans SQLite (source de vérité)
-        if save_match_to_db(new_match):
+        save_result = save_match_to_db(new_match)
+        # #region agent log
+        try:
+            with open('c:\\Users\\lekma\\Desktop\\psm-bot\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"psm.py:api_add_match:AFTER_SAVE","message":"After save_match_to_db","data":{"save_success":save_result,"match_nom":nom},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
+        if save_result:
             log(f"✅ Match sauvegardé dans SQLite: {nom}", 'success')
         else:
             log(f"⚠️ Erreur sauvegarde SQLite pour: {nom}", 'warning')
