@@ -639,8 +639,8 @@ def charger_matchs():
                 # #region agent log
                 try:
                     debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
+                    os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+                    with open(debug_log_path, 'a', encoding='utf-8') as f:
                         f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:JSON_LOADED","message":"matches.json loaded","data":{"match_count":len(matches) if matches else 0,"matches":matches},"timestamp":int(__import__('time').time()*1000)}) + '\n')
                 except: pass
                 # #endregion
@@ -657,8 +657,8 @@ def charger_matchs():
                 # #region agent log
                 try:
                     debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
+                    os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+                    with open(debug_log_path, 'a', encoding='utf-8') as f:
                         f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"psm.py:charger_matchs:JSON_ERROR","message":"Error reading matches.json","data":{"error":str(e)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
                 except: pass
                 # #endregion
@@ -756,7 +756,7 @@ Date et heure RÉELLES (à utiliser exactement):
         current_date = datetime.now()
         date_info = f"""
 Génère des informations RÉALISTES pour ce match:
-- Date: Une date future cohérente avec le calendrier Ligue 1 2024-2025
+- Date: Une date future cohérente avec le calendrier Ligue 1 2024-2026
 - Heure: Varie selon le type de match (17h00, 19h00, 21h00)
 - Compétition: Ligue 1, Coupe de France, ou Ligue des Champions
 - Lieu: Parc des Princes (sauf cas particulier)
