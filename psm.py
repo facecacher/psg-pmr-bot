@@ -65,11 +65,77 @@ DETECTIONS_HISTORY_FILE = 'detections_history.json'
 # CONFIGURATION FIREBASE/FIRESTORE
 # ====================
 FIREBASE_INITIALIZED = False
+FIREBASE_CREDENTIALS_INVALID = False  # Flag pour éviter les tentatives répétées avec credentials invalides
 db = None  # Instance Firestore
+
+def _parse_credentials_json(credentials_str):
+    """
+    Parse les credentials Firebase depuis une chaîne JSON avec plusieurs tentatives
+    Retourne (cred_dict, error_message) ou (None, error_message)
+    """
+    import json as json_module
+    
+    # Tentative 1 : Parsing direct
+    try:
+        cred_dict = json_module.loads(credentials_str)
+        return cred_dict, None
+    except json.JSONDecodeError:
+        pass
+    
+    # Tentative 2 : Nettoyer les espaces et retours à la ligne
+    try:
+        credentials_str_clean = credentials_str.strip()
+        cred_dict = json_module.loads(credentials_str_clean)
+        return cred_dict, None
+    except json.JSONDecodeError:
+        pass
+    
+    # Tentative 3 : Retirer les guillemets externes et décoder les échappements
+    try:
+        credentials_str_clean = credentials_str.strip()
+        if credentials_str_clean.startswith('"') and credentials_str_clean.endswith('"'):
+            credentials_str_clean = credentials_str_clean[1:-1]
+        # Décoder les échappements JSON
+        credentials_str_clean = credentials_str_clean.replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
+        cred_dict = json_module.loads(credentials_str_clean)
+        return cred_dict, None
+    except json.JSONDecodeError:
+        pass
+    
+    # Tentative 4 : Essayer de réparer les retours à la ligne mal échappés
+    try:
+        credentials_str_clean = credentials_str.strip()
+        # Remplacer \n littéral par de vrais retours à la ligne
+        credentials_str_clean = credentials_str_clean.replace('\\n', '\n')
+        # Retirer les guillemets externes si présents
+        if credentials_str_clean.startswith('"') and credentials_str_clean.endswith('"'):
+            credentials_str_clean = credentials_str_clean[1:-1]
+        cred_dict = json_module.loads(credentials_str_clean)
+        return cred_dict, None
+    except json.JSONDecodeError as e:
+        return None, f"Impossible de parser le JSON après 4 tentatives: {e}"
+    
+    return None, "Toutes les tentatives de parsing ont échoué"
+
+def _validate_credentials_structure(cred_dict):
+    """
+    Valide que le dictionnaire de credentials contient tous les champs requis
+    Retourne (is_valid, error_message)
+    """
+    required_fields = ['type', 'project_id', 'private_key', 'client_email']
+    missing_fields = [field for field in required_fields if field not in cred_dict]
+    
+    if missing_fields:
+        return False, f"Champs manquants dans les credentials: {', '.join(missing_fields)}"
+    
+    if cred_dict.get('type') != 'service_account':
+        return False, f"Type de credential invalide: {cred_dict.get('type')} (attendu: service_account)"
+    
+    return True, None
 
 def init_firebase():
     """Initialise Firebase Admin avec les credentials depuis les variables d'environnement"""
-    global FIREBASE_INITIALIZED, db
+    global FIREBASE_INITIALIZED, FIREBASE_CREDENTIALS_INVALID, db
     
     if not FIREBASE_AVAILABLE:
         log("⚠️ Firebase Admin non disponible. Utilisation des fichiers JSON locaux uniquement.", 'warning')
@@ -77,6 +143,9 @@ def init_firebase():
     
     if FIREBASE_INITIALIZED:
         return True
+    
+    # Réinitialiser le flag d'erreur si on réessaie
+    FIREBASE_CREDENTIALS_INVALID = False
     
     try:
         project_id = os.environ.get('FIREBASE_PROJECT_ID')
@@ -89,49 +158,91 @@ def init_firebase():
         
         # PRIORITÉ 1 : Essayer de charger les credentials depuis une variable d'environnement (JSON stringifié)
         cred = None
+        cred_dict = None
         if credentials_str:
             try:
-                import json as json_module
-                # Nettoyer la chaîne (enlever les retours à la ligne en début/fin si présents)
-                credentials_str_clean = credentials_str.strip()
-                
-                # Si la chaîne commence par des guillemets, les retirer (certains systèmes ajoutent des guillemets)
-                if credentials_str_clean.startswith('"') and credentials_str_clean.endswith('"'):
-                    credentials_str_clean = credentials_str_clean[1:-1]
-                    # Décoder les échappements JSON
-                    credentials_str_clean = credentials_str_clean.replace('\\n', '\n').replace('\\"', '"')
-                
-                cred_dict = json_module.loads(credentials_str_clean)
-                cred = credentials.Certificate(cred_dict)
-                log("✅ Credentials Firebase chargés depuis FIREBASE_CREDENTIALS (variable d'environnement)", 'success')
-            except json.JSONDecodeError as e:
-                log(f"❌ Erreur parsing FIREBASE_CREDENTIALS (JSON invalide): {e}", 'error')
-                log(f"💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide complet", 'info')
-                log(f"💡 Longueur de la chaîne: {len(credentials_str)} caractères", 'info')
-                log(f"💡 Premiers 100 caractères: {credentials_str[:100]}...", 'info')
+                cred_dict, parse_error = _parse_credentials_json(credentials_str)
+                if cred_dict is None:
+                    log(f"❌ Erreur parsing FIREBASE_CREDENTIALS: {parse_error}", 'error')
+                    log(f"💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide complet", 'info')
+                    log(f"💡 Longueur de la chaîne: {len(credentials_str)} caractères", 'info')
+                    FIREBASE_CREDENTIALS_INVALID = True
+                else:
+                    # Valider la structure
+                    is_valid, validation_error = _validate_credentials_structure(cred_dict)
+                    if not is_valid:
+                        log(f"❌ Structure credentials invalide: {validation_error}", 'error')
+                        FIREBASE_CREDENTIALS_INVALID = True
+                    else:
+                        # Vérifier que le project_id correspond
+                        if cred_dict.get('project_id') != project_id:
+                            log(f"❌ Incohérence project_id: FIREBASE_PROJECT_ID={project_id} mais credentials contient project_id={cred_dict.get('project_id')}", 'error')
+                            log("💡 Vérifiez que FIREBASE_PROJECT_ID correspond au project_id dans les credentials", 'info')
+                            FIREBASE_CREDENTIALS_INVALID = True
+                        else:
+                            cred = credentials.Certificate(cred_dict)
+                            log("✅ Credentials Firebase chargés depuis FIREBASE_CREDENTIALS (variable d'environnement)", 'success')
             except Exception as e:
+                error_str = str(e)
                 log(f"❌ Erreur chargement credentials Firebase depuis variable: {e}", 'error')
+                if 'invalid_grant' in error_str or 'Invalid JWT' in error_str:
+                    FIREBASE_CREDENTIALS_INVALID = True
                 import traceback
                 traceback.print_exc()
         
         # PRIORITÉ 2 : Essayer depuis un fichier (si variable d'environnement non disponible)
         if not cred and credentials_path and os.path.exists(credentials_path):
             try:
-                cred = credentials.Certificate(credentials_path)
-                log(f"✅ Credentials Firebase chargés depuis {credentials_path}", 'success')
+                # Charger et valider le fichier
+                with open(credentials_path, 'r', encoding='utf-8') as f:
+                    file_cred_dict = json.load(f)
+                
+                # Valider la structure
+                is_valid, validation_error = _validate_credentials_structure(file_cred_dict)
+                if not is_valid:
+                    log(f"❌ Structure credentials invalide dans {credentials_path}: {validation_error}", 'error')
+                    FIREBASE_CREDENTIALS_INVALID = True
+                elif file_cred_dict.get('project_id') != project_id:
+                    log(f"❌ Incohérence project_id dans {credentials_path}: FIREBASE_PROJECT_ID={project_id} mais fichier contient project_id={file_cred_dict.get('project_id')}", 'error')
+                    FIREBASE_CREDENTIALS_INVALID = True
+                else:
+                    cred = credentials.Certificate(credentials_path)
+                    log(f"✅ Credentials Firebase chargés depuis {credentials_path}", 'success')
+            except json.JSONDecodeError as e:
+                log(f"❌ Erreur parsing JSON dans {credentials_path}: {e}", 'error')
+                FIREBASE_CREDENTIALS_INVALID = True
             except Exception as e:
-                log(f"⚠️ Erreur chargement credentials depuis fichier: {e}", 'warning')
+                log(f"⚠️ Erreur chargement credentials depuis fichier {credentials_path}: {e}", 'warning')
         
         # PRIORITÉ 3 : Essayer le fichier par défaut (fallback)
         if not cred and os.path.exists('firebase-credentials.json'):
             try:
-                cred = credentials.Certificate('firebase-credentials.json')
-                log("✅ Credentials Firebase chargés depuis firebase-credentials.json (fichier local)", 'success')
+                # Charger et valider le fichier
+                with open('firebase-credentials.json', 'r', encoding='utf-8') as f:
+                    file_cred_dict = json.load(f)
+                
+                # Valider la structure
+                is_valid, validation_error = _validate_credentials_structure(file_cred_dict)
+                if not is_valid:
+                    log(f"❌ Structure credentials invalide dans firebase-credentials.json: {validation_error}", 'error')
+                    FIREBASE_CREDENTIALS_INVALID = True
+                elif file_cred_dict.get('project_id') != project_id:
+                    log(f"❌ Incohérence project_id dans firebase-credentials.json: FIREBASE_PROJECT_ID={project_id} mais fichier contient project_id={file_cred_dict.get('project_id')}", 'error')
+                    FIREBASE_CREDENTIALS_INVALID = True
+                else:
+                    cred = credentials.Certificate('firebase-credentials.json')
+                    log("✅ Credentials Firebase chargés depuis firebase-credentials.json (fichier local)", 'success')
+            except json.JSONDecodeError as e:
+                log(f"❌ Erreur parsing JSON dans firebase-credentials.json: {e}", 'error')
+                FIREBASE_CREDENTIALS_INVALID = True
             except Exception as e:
                 log(f"⚠️ Erreur chargement firebase-credentials.json: {e}", 'warning')
         
         if not cred:
-            log("⚠️ Aucun credential Firebase trouvé. Firestore désactivé.", 'warning')
+            if FIREBASE_CREDENTIALS_INVALID:
+                log("❌ Credentials Firebase invalides. Firestore désactivé.", 'error')
+            else:
+                log("⚠️ Aucun credential Firebase trouvé. Firestore désactivé.", 'warning')
             return False
         
         # Initialiser Firebase Admin
@@ -144,13 +255,26 @@ def init_firebase():
         
         # TESTER la connexion avec un timeout court pour vérifier que les credentials sont valides
         def _test_connection():
-            """Fonction interne pour tester la connexion Firestore"""
+            """Fonction interne pour tester la connexion Firestore avec une opération réelle"""
             try:
-                test_ref = db.collection('_test').document('_test')
-                test_ref.get()  # Essayer une opération simple
+                # Essayer une opération réelle : créer un document test puis le supprimer
+                test_ref = db.collection('_connection_test').document('_test')
+                # Essayer de lire (peut ne pas exister, c'est OK)
+                test_ref.get()
+                # Si on arrive ici, la connexion fonctionne
                 return True
             except Exception as e:
-                raise e
+                # Vérifier si c'est une erreur de credentials
+                error_str = str(e).lower()
+                credentials_errors = [
+                    'invalid_grant', 'invalid jwt', 'invalid jwt signature',
+                    'permission denied', 'unauthorized', 'authentication',
+                    'invalid credentials', 'invalid key', 'signature'
+                ]
+                if any(err in error_str for err in credentials_errors):
+                    raise ValueError(f"CREDENTIALS_ERROR: {e}")
+                # Autres erreurs (réseau, collection n'existe pas, etc.) sont OK
+                return True
         
         try:
             # Tester avec un timeout de 5 secondes
@@ -160,13 +284,31 @@ def init_firebase():
         except FutureTimeoutError:
             # Timeout = problème réseau, mais pas nécessairement credentials invalides
             log("⚠️ Timeout lors du test de connexion Firestore (peut être normal si réseau lent)", 'warning')
-        except Exception as test_error:
+            log("ℹ️ Firestore sera activé mais peut ne pas fonctionner correctement", 'info')
+        except ValueError as test_error:
+            # Erreur de credentials détectée
             error_str = str(test_error)
-            if 'invalid_grant' in error_str or 'Invalid JWT' in error_str or 'Invalid JWT Signature' in error_str:
-                log("❌ Credentials Firebase invalides (Invalid JWT Signature). Firestore désactivé.", 'error')
+            if 'CREDENTIALS_ERROR' in error_str:
+                log("❌ Credentials Firebase invalides détectés lors du test de connexion. Firestore désactivé.", 'error')
+                log("💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide et complet", 'info')
+                log("💡 Vérifiez que le project_id correspond bien", 'info')
+                log("💡 Vous devrez peut-être régénérer les credentials depuis la console Firebase", 'info')
+                FIREBASE_INITIALIZED = False
+                FIREBASE_CREDENTIALS_INVALID = True
+                return False
+        except Exception as test_error:
+            error_str = str(test_error).lower()
+            # Vérifier à nouveau pour être sûr
+            credentials_errors = [
+                'invalid_grant', 'invalid jwt', 'invalid jwt signature',
+                'permission denied', 'unauthorized', 'authentication'
+            ]
+            if any(err in error_str for err in credentials_errors):
+                log("❌ Credentials Firebase invalides détectés. Firestore désactivé.", 'error')
                 log("💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide et complet", 'info')
                 log("💡 Vous devrez peut-être régénérer les credentials depuis la console Firebase", 'info')
                 FIREBASE_INITIALIZED = False
+                FIREBASE_CREDENTIALS_INVALID = True
                 return False
             # Autres erreurs sont OK (collection n'existe pas, etc.)
             # On continue l'initialisation car les credentials semblent valides
@@ -183,7 +325,12 @@ def init_firebase():
 
 def save_to_firestore(collection, doc_id, data):
     """Sauvegarde des données dans Firestore"""
-    global db
+    global db, FIREBASE_CREDENTIALS_INVALID
+    
+    # Vérifier le flag d'erreur pour éviter les tentatives répétées
+    if FIREBASE_CREDENTIALS_INVALID:
+        return False
+    
     if not FIREBASE_INITIALIZED or not db:
         return False
     
@@ -196,12 +343,31 @@ def save_to_firestore(collection, doc_id, data):
         doc_ref.set(firestore_data, merge=True)
         return True
     except Exception as e:
+        error_str = str(e).lower()
+        # Vérifier si c'est une erreur de credentials
+        credentials_errors = [
+            'invalid_grant', 'invalid jwt', 'invalid jwt signature',
+            'permission denied', 'unauthorized', 'authentication',
+            'invalid credentials', 'invalid key'
+        ]
+        if any(err in error_str for err in credentials_errors):
+            # Marquer comme invalide et ne plus réessayer
+            FIREBASE_CREDENTIALS_INVALID = True
+            FIREBASE_INITIALIZED = False
+            log("❌ Credentials Firebase invalides détectés lors de la sauvegarde. Firestore désactivé.", 'error')
+            return False
+        # Autres erreurs : log une seule fois
         log(f"⚠️ Erreur sauvegarde Firestore ({collection}/{doc_id}): {e}", 'warning')
         return False
 
 def load_from_firestore(collection, doc_id):
     """Charge des données depuis Firestore avec timeout"""
-    global db
+    global db, FIREBASE_CREDENTIALS_INVALID
+    
+    # Vérifier le flag d'erreur pour éviter les tentatives répétées
+    if FIREBASE_CREDENTIALS_INVALID:
+        return None
+    
     if not FIREBASE_INITIALIZED or not db:
         return None
     
@@ -227,12 +393,31 @@ def load_from_firestore(collection, doc_id):
         log(f"⏱️ Timeout (15s) lors du chargement Firestore ({collection}/{doc_id})", 'warning')
         return None
     except Exception as e:
+        error_str = str(e).lower()
+        # Vérifier si c'est une erreur de credentials
+        credentials_errors = [
+            'invalid_grant', 'invalid jwt', 'invalid jwt signature',
+            'permission denied', 'unauthorized', 'authentication',
+            'invalid credentials', 'invalid key'
+        ]
+        if any(err in error_str for err in credentials_errors):
+            # Marquer comme invalide et ne plus réessayer
+            FIREBASE_CREDENTIALS_INVALID = True
+            FIREBASE_INITIALIZED = False
+            log("❌ Credentials Firebase invalides détectés lors du chargement. Firestore désactivé.", 'error')
+            return None
+        # Autres erreurs : log une seule fois
         log(f"⚠️ Erreur chargement Firestore ({collection}/{doc_id}): {e}", 'warning')
         return None
 
 def delete_from_firestore(collection, doc_id):
     """Supprime un document de Firestore"""
-    global db
+    global db, FIREBASE_CREDENTIALS_INVALID
+    
+    # Vérifier le flag d'erreur pour éviter les tentatives répétées
+    if FIREBASE_CREDENTIALS_INVALID:
+        return False
+    
     if not FIREBASE_INITIALIZED or not db:
         return False
     
@@ -241,12 +426,31 @@ def delete_from_firestore(collection, doc_id):
         doc_ref.delete()
         return True
     except Exception as e:
+        error_str = str(e).lower()
+        # Vérifier si c'est une erreur de credentials
+        credentials_errors = [
+            'invalid_grant', 'invalid jwt', 'invalid jwt signature',
+            'permission denied', 'unauthorized', 'authentication',
+            'invalid credentials', 'invalid key'
+        ]
+        if any(err in error_str for err in credentials_errors):
+            # Marquer comme invalide et ne plus réessayer
+            FIREBASE_CREDENTIALS_INVALID = True
+            FIREBASE_INITIALIZED = False
+            log("❌ Credentials Firebase invalides détectés lors de la suppression. Firestore désactivé.", 'error')
+            return False
+        # Autres erreurs : log une seule fois
         log(f"⚠️ Erreur suppression Firestore ({collection}/{doc_id}): {e}", 'warning')
         return False
 
 def get_all_from_firestore(collection):
     """Récupère tous les documents d'une collection Firestore avec timeout"""
-    global db
+    global db, FIREBASE_CREDENTIALS_INVALID
+    
+    # Vérifier le flag d'erreur pour éviter les tentatives répétées
+    if FIREBASE_CREDENTIALS_INVALID:
+        return []
+    
     if not FIREBASE_INITIALIZED or not db:
         return []
     
@@ -277,6 +481,20 @@ def get_all_from_firestore(collection):
         log(f"⏱️ Timeout (15s) lors de la récupération collection Firestore ({collection})", 'warning')
         return []
     except Exception as e:
+        error_str = str(e).lower()
+        # Vérifier si c'est une erreur de credentials
+        credentials_errors = [
+            'invalid_grant', 'invalid jwt', 'invalid jwt signature',
+            'permission denied', 'unauthorized', 'authentication',
+            'invalid credentials', 'invalid key'
+        ]
+        if any(err in error_str for err in credentials_errors):
+            # Marquer comme invalide et ne plus réessayer
+            FIREBASE_CREDENTIALS_INVALID = True
+            FIREBASE_INITIALIZED = False
+            log("❌ Credentials Firebase invalides détectés lors de la récupération. Firestore désactivé.", 'error')
+            return []
+        # Autres erreurs : log une seule fois
         log(f"⚠️ Erreur récupération collection Firestore ({collection}): {e}", 'warning')
         return []
 
@@ -470,16 +688,16 @@ def charger_matchs():
         
         # PRIORITÉ 3 : Matchs par défaut si rien n'existe
         matchs_default = [
-            {
-                "nom": "PSG vs PARIS FC",
+    {
+        "nom": "PSG vs PARIS FC",
                 "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-sg-vs-paris-fc-1",
                 "competition": "Ligue 1",
                 "date": None,
                 "time": "21:00",
                 "lieu": "Parc des Princes"
-            },
-            {
-                "nom": "PSG vs RENNE",
+    },
+    {
+        "nom": "PSG vs RENNE",
                 "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-vs-rennes-5",
                 "competition": "Ligue 1",
                 "date": None,
