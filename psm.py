@@ -46,17 +46,38 @@ except:
         pass  # Si la locale n'est pas disponible, on utilisera une fonction de remplacement
 
 # ====================
+# CONFIGURATION RÉPERTOIRE DE DONNÉES
+# ====================
+# Répertoire persistant pour toutes les données (base de données et fichiers JSON)
+DATA_DIR = '/app/data'
+
+# Créer le répertoire de données s'il n'existe pas et vérifier les permissions
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Vérifier que le répertoire est accessible en écriture
+try:
+    test_file = os.path.join(DATA_DIR, '.test_write')
+    with open(test_file, 'w') as f:
+        f.write('test')
+    os.remove(test_file)
+    log(f"✅ Répertoire de données accessible: {os.path.abspath(DATA_DIR)}", 'success')
+except Exception as e:
+    log(f"⚠️ ATTENTION: Le répertoire {DATA_DIR} n'est pas accessible en écriture: {e}", 'warning')
+    log(f"⚠️ Les données pourraient ne pas persister correctement!", 'warning')
+
+# ====================
 # CHEMINS DES FICHIERS
 # ====================
-MATCHES_FILE = 'matches.json'
-ANALYTICS_FILE = 'analytics.json'
-GROQ_CACHE_FILE = 'groq_cache.json'
-DETECTIONS_HISTORY_FILE = 'detections_history.json'
+MATCHES_FILE = os.path.join(DATA_DIR, 'matches.json')
+ANALYTICS_FILE = os.path.join(DATA_DIR, 'analytics.json')
+GROQ_CACHE_FILE = os.path.join(DATA_DIR, 'groq_cache.json')
+DETECTIONS_HISTORY_FILE = os.path.join(DATA_DIR, 'detections_history.json')
+STATUS_FILE = os.path.join(DATA_DIR, 'status.json')
 
 # ====================
 # CONFIGURATION SQLITE
 # ====================
-DB_FILE = 'psm_bot.db'
+DB_FILE = os.path.join(DATA_DIR, 'psm_bot.db')
 db_conn = None  # Connexion SQLite
 DB_TIMEOUT = 20.0  # Timeout en secondes pour les opérations de base de données
 MAX_RETRIES = 3  # Nombre maximum de tentatives en cas de verrou
@@ -198,6 +219,7 @@ def init_database():
         
         conn.commit()
         log("✅ Base de données SQLite initialisée avec succès", 'success')
+        log(f"📂 Chemin base de données: {os.path.abspath(DB_FILE)}", 'info')
         return True
     except Exception as e:
         log(f"❌ Erreur initialisation base de données: {e}", 'error')
@@ -208,16 +230,31 @@ def init_database():
 def migrate_json_to_sqlite():
     """Migre les données depuis les fichiers JSON vers SQLite (une seule fois)"""
     try:
+        # IMPORTANT: Ne migrer que si SQLite n'existe pas du tout
+        # Si SQLite existe (même vide), c'est la source de vérité et on ne doit pas restaurer depuis JSON
+        if os.path.exists(DB_FILE):
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Vérifier si la migration a déjà été faite (si matches n'est pas vide)
+            cursor.execute('SELECT COUNT(*) FROM matches')
+            if cursor.fetchone()[0] > 0:
+                log("ℹ️ Migration déjà effectuée, données JSON ignorées", 'info')
+                log(f"📂 Base de données SQLite existe: {os.path.abspath(DB_FILE)}", 'info')
+                return True
+            else:
+                # SQLite existe mais est vide - ne pas migrer depuis JSON
+                # SQLite est la source de vérité, même si vide
+                log("ℹ️ Base de données SQLite existe mais est vide - pas de migration depuis JSON", 'info')
+                log(f"📂 SQLite est la source de vérité: {os.path.abspath(DB_FILE)}", 'info')
+                return True
+        
+        # SQLite n'existe pas - première installation, on peut migrer depuis JSON
+        log("📥 Migration des données JSON vers SQLite (première installation)...", 'info')
+        log(f"📂 Base de données SQLite n'existe pas encore: {DB_FILE}", 'info')
+        
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # Vérifier si la migration a déjà été faite (si matches n'est pas vide)
-        cursor.execute('SELECT COUNT(*) FROM matches')
-        if cursor.fetchone()[0] > 0:
-            log("ℹ️ Migration déjà effectuée, données JSON ignorées", 'info')
-            return True
-        
-        log("📥 Migration des données JSON vers SQLite...", 'info')
         
         # Migrer matches.json
         if os.path.exists(MATCHES_FILE):
@@ -241,9 +278,9 @@ def migrate_json_to_sqlite():
                 log(f"⚠️ Erreur migration matches.json: {e}", 'warning')
         
         # Migrer status.json
-        if os.path.exists('status.json'):
+        if os.path.exists(STATUS_FILE):
             try:
-                with open('status.json', 'r', encoding='utf-8') as f:
+                with open(STATUS_FILE, 'r', encoding='utf-8') as f:
                     status_data = json.load(f)
                 cursor.execute('''
                     INSERT OR REPLACE INTO status (id, data, updated_at)
@@ -305,6 +342,7 @@ def migrate_json_to_sqlite():
         
         conn.commit()
         log("✅ Migration terminée", 'success')
+        log(f"📂 Base de données créée: {os.path.abspath(DB_FILE)}", 'info')
         return True
     except Exception as e:
         log(f"❌ Erreur lors de la migration: {e}", 'error')
@@ -661,11 +699,20 @@ def charger_matchs():
             # Ne pas faire de backup automatique vers JSON (créerait des incohérences)
             # Le backup sera fait explicitement après les opérations réussies
             log(f"📂 {len(matches)} match(s) chargé(s) depuis SQLite", 'info')
+            log(f"📂 Chemin SQLite: {os.path.abspath(DB_FILE)}", 'info')
             return matches
         
-        # PRIORITÉ 2 : Fichier local (fallback si SQLite est vide ou n'existe pas)
-        # Si SQLite est vide mais que matches.json existe, restaurer depuis matches.json
-        # (peut arriver après un redéploiement où la DB est recréée)
+        # IMPORTANT: Si SQLite existe mais est vide, NE PAS restaurer depuis JSON
+        # SQLite est toujours la source de vérité, même si vide
+        if os.path.exists(DB_FILE):
+            log(f"ℹ️ Base SQLite existe mais est vide - SQLite est la source de vérité", 'info')
+            log(f"📂 Chemin SQLite: {os.path.abspath(DB_FILE)}", 'info')
+            log(f"ℹ️ matches.json ignoré car SQLite existe (même vide)", 'info')
+            # Retourner une liste vide plutôt que de restaurer depuis JSON
+            return []
+        
+        # PRIORITÉ 2 : Fichier local (fallback UNIQUEMENT si SQLite n'existe pas)
+        # Ne restaurer depuis JSON que si SQLite n'existe pas du tout
         if os.path.exists(MATCHES_FILE):
             # #region agent log
             try:
@@ -689,7 +736,8 @@ def charger_matchs():
                 # #endregion
                 if matches and len(matches) > 0:
                     log(f"📂 matches.json trouvé avec {len(matches)} match(s) - restauration depuis backup", 'info')
-                    # Restaurer dans SQLite
+                    log(f"📂 SQLite n'existe pas, restauration depuis JSON: {os.path.abspath(MATCHES_FILE)}", 'info')
+                    # Restaurer dans SQLite (uniquement si SQLite n'existe pas)
                     for match in matches:
                         save_match_to_db(match)
                     log(f"✅ {len(matches)} match(s) restauré(s) dans SQLite depuis matches.json", 'success')
@@ -707,11 +755,9 @@ def charger_matchs():
                 # #endregion
                 log(f"⚠️ Erreur lecture matches.json: {e}", 'warning')
         
-        # Si on arrive ici, SQLite est vide et matches.json n'existe pas ou est vide
-        if os.path.exists(DB_FILE):
-            log(f"ℹ️ Base SQLite vide - aucun match à charger", 'info')
-        else:
-            log(f"ℹ️ Base SQLite n'existe pas encore - première installation", 'info')
+        # Si on arrive ici, SQLite n'existe pas et matches.json n'existe pas ou est vide
+        log(f"ℹ️ Base SQLite n'existe pas encore - première installation", 'info')
+        log(f"📂 Chemin SQLite attendu: {os.path.abspath(DB_FILE)}", 'info')
         
         # PRIORITÉ 3 : Matchs par défaut si rien n'existe (première installation)
         matchs_default = [
@@ -1238,10 +1284,12 @@ def sauvegarder_status():
     
     # Sauvegarder aussi dans le fichier local (backup) - l'original n'a pas été modifié
     import os
-    status_path = 'status.json'
+    status_path = STATUS_FILE
     with open(status_path, 'w', encoding='utf-8') as f:
         json.dump(status, f, ensure_ascii=False, indent=2)
-    print(f"💾 status.json sauvegardé dans: {os.path.abspath(status_path)}")
+    abs_path = os.path.abspath(status_path)
+    print(f"💾 status.json sauvegardé dans: {abs_path}")
+    log(f"📂 status.json sauvegardé: {abs_path}", 'info')
 
 def verifier_match(match):
     nom = match["nom"]
@@ -1365,7 +1413,7 @@ CORS(app, resources={r"/api/*": {"origins": "*", "supports_credentials": False}}
 def api_get_status():
     """Retourne le statut complet du bot depuis status.json"""
     try:
-        with open('status.json', 'r', encoding='utf-8') as f:
+        with open(STATUS_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
         return jsonify(data)
     except FileNotFoundError:
@@ -1449,6 +1497,7 @@ def api_add_match():
                 return jsonify({"error": "Impossible de sauvegarder le match dans la base de données"}), 500
             
             log(f"✅ Match sauvegardé dans SQLite: {nom}", 'success')
+            log(f"📂 Base de données: {os.path.abspath(DB_FILE)}", 'info')
             
             # Recharger les matches depuis la DB pour avoir la liste à jour
             matches = charger_matchs()
@@ -1526,6 +1575,7 @@ def api_delete_match(index):
                     return jsonify({"error": f"Impossible de supprimer le match '{match_nom}' de la base de données"}), 500
                 
                 log(f"✅ Match supprimé de SQLite: {match_nom}", 'success')
+                log(f"📂 Base de données: {os.path.abspath(DB_FILE)}", 'info')
                 
                 # Recharger les matches depuis la DB pour avoir la liste à jour
                 matches = charger_matchs()
@@ -1878,7 +1928,7 @@ def api_groq_analyze():
         
         # Charger les données du match depuis status.json
         try:
-            with open('status.json', 'r', encoding='utf-8') as f:
+            with open(STATUS_FILE, 'r', encoding='utf-8') as f:
                 status = json.load(f)
         except FileNotFoundError:
             return jsonify({"error": "status.json non trouvé"}), 404
@@ -2302,12 +2352,11 @@ def start_web_server():
                 self._proxy_to_flask('GET')
                 return
             
-            # Si on demande status.json, le servir depuis la racine du projet
+            # Si on demande status.json, le servir depuis le répertoire de données
             if self.path == '/status.json' or self.path == '/status.json/':
                 import os
-                # status.json est dans le WORKDIR (/app)
-                # Utiliser le chemin absolu depuis le répertoire de travail
-                status_path = os.path.join(os.getcwd(), 'status.json')
+                # status.json est dans /app/data/
+                status_path = STATUS_FILE
                 print(f"🔍 Tentative de servir status.json depuis: {status_path}")
                 print(f"🔍 Fichier existe: {os.path.exists(status_path)}")
                 
@@ -2320,24 +2369,13 @@ def start_web_server():
                     print(f"✅ status.json servi avec succès")
                     return
                 else:
-                    # Essayer aussi /app/status.json au cas où
-                    alt_path = '/app/status.json'
-                    if os.path.exists(alt_path):
-                        self.send_response(200)
-                        self.send_header('Content-type', 'application/json')
-                        self.end_headers()
-                        with open(alt_path, 'rb') as f:
-                            self.wfile.write(f.read())
-                        print(f"✅ status.json servi depuis {alt_path}")
-                        return
-                    else:
-                        self.send_response(404)
-                        self.send_header('Content-type', 'application/json')
-                        self.end_headers()
-                        error_msg = json.dumps({"error": "status.json not found", "cwd": os.getcwd(), "paths_checked": [status_path, alt_path]})
-                        self.wfile.write(error_msg.encode('utf-8'))
-                        print(f"❌ status.json non trouvé. CWD: {os.getcwd()}")
-                        return
+                    self.send_response(404)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    error_msg = json.dumps({"error": "status.json not found", "path": status_path})
+                    self.wfile.write(error_msg.encode('utf-8'))
+                    print(f"❌ status.json non trouvé. Path: {status_path}")
+                    return
             
             # Gérer les routes sans extension (comme /admin)
             if self.path == '/admin' or self.path == '/admin/':

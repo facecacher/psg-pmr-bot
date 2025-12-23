@@ -51,6 +51,9 @@ COPY Site/ ./Site/
 ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
 
+# Volume persistant pour les données (base de données SQLite et fichiers JSON)
+VOLUME /app/data
+
 EXPOSE 8081 5000
 
 CMD ["python", "-u", "psm.py"]
