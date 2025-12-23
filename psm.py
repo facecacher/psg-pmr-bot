@@ -11,6 +11,7 @@ import locale
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import collections
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 # Import Firebase Admin (optionnel - seulement si configuré)
 try:
@@ -157,19 +158,31 @@ def save_to_firestore(collection, doc_id, data):
         return False
 
 def load_from_firestore(collection, doc_id):
-    """Charge des données depuis Firestore"""
+    """Charge des données depuis Firestore avec timeout"""
     global db
     if not FIREBASE_INITIALIZED or not db:
         return None
     
+    def _load():
+        try:
+            doc_ref = db.collection(collection).document(doc_id)
+            doc = doc_ref.get()
+            if doc.exists:
+                data = doc.to_dict()
+                # Retirer le timestamp serveur si présent
+                data.pop('_server_timestamp', None)
+                return data
+            return None
+        except Exception as e:
+            raise e
+    
     try:
-        doc_ref = db.collection(collection).document(doc_id)
-        doc = doc_ref.get()
-        if doc.exists:
-            data = doc.to_dict()
-            # Retirer le timestamp serveur si présent
-            data.pop('_server_timestamp', None)
-            return data
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_load)
+            result = future.result(timeout=15)  # Timeout de 15 secondes
+            return result
+    except FutureTimeoutError:
+        log(f"⏱️ Timeout (15s) lors du chargement Firestore ({collection}/{doc_id})", 'warning')
         return None
     except Exception as e:
         log(f"⚠️ Erreur chargement Firestore ({collection}/{doc_id}): {e}", 'warning')
@@ -190,25 +203,37 @@ def delete_from_firestore(collection, doc_id):
         return False
 
 def get_all_from_firestore(collection):
-    """Récupère tous les documents d'une collection Firestore"""
+    """Récupère tous les documents d'une collection Firestore avec timeout"""
     global db
     if not FIREBASE_INITIALIZED or not db:
         return []
     
+    def _get_all():
+        try:
+            # Utiliser limit() pour éviter les blocages sur collections vides
+            docs = db.collection(collection).limit(1000).stream()
+            result = []
+            for doc in docs:
+                try:
+                    data = doc.to_dict()
+                    if data:
+                        data.pop('_server_timestamp', None)
+                        result.append(data)
+                except Exception as doc_error:
+                    log(f"⚠️ Erreur parsing document dans {collection}: {doc_error}", 'warning')
+                    continue
+            return result
+        except Exception as e:
+            raise e
+    
     try:
-        # Utiliser limit() pour éviter les blocages sur collections vides
-        docs = db.collection(collection).limit(1000).stream()
-        result = []
-        for doc in docs:
-            try:
-                data = doc.to_dict()
-                if data:
-                    data.pop('_server_timestamp', None)
-                    result.append(data)
-            except Exception as doc_error:
-                log(f"⚠️ Erreur parsing document dans {collection}: {doc_error}", 'warning')
-                continue
-        return result
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_get_all)
+            result = future.result(timeout=15)  # Timeout de 15 secondes
+            return result
+    except FutureTimeoutError:
+        log(f"⏱️ Timeout (15s) lors de la récupération collection Firestore ({collection})", 'warning')
+        return []
     except Exception as e:
         log(f"⚠️ Erreur récupération collection Firestore ({collection}): {e}", 'warning')
         return []
