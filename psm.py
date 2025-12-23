@@ -249,87 +249,105 @@ def get_all_from_firestore(collection):
         return []
 
 def load_all_from_firestore():
-    """Charge toutes les données depuis Firestore au démarrage"""
+    """Charge toutes les données depuis Firestore au démarrage (non-bloquant avec timeout global)"""
     if not FIREBASE_INITIALIZED:
         return False
     
+    def _load_all():
+        """Fonction interne pour charger toutes les données"""
+        try:
+            log("📥 Chargement des données depuis Firestore...", 'info')
+            
+            # Charger les matchs (avec gestion d'erreur individuelle)
+            try:
+                matches = get_all_from_firestore('matches')
+                if matches:
+                    with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(matches, f, ensure_ascii=False, indent=2)
+                    log(f"✅ {len(matches)} match(s) chargé(s) depuis Firestore", 'success')
+                else:
+                    log("ℹ️ Aucun match trouvé dans Firestore (collection vide - première utilisation)", 'info')
+            except Exception as e:
+                log(f"⚠️ Erreur chargement matchs depuis Firestore: {e}", 'warning')
+            
+            # Charger le status
+            try:
+                status = load_from_firestore('status', 'current')
+                if status:
+                    with open('status.json', 'w', encoding='utf-8') as f:
+                        json.dump(status, f, ensure_ascii=False, indent=2)
+                    log("✅ Status chargé depuis Firestore", 'success')
+                else:
+                    log("ℹ️ Aucun status trouvé dans Firestore (première utilisation)", 'info')
+            except Exception as e:
+                log(f"⚠️ Erreur chargement status depuis Firestore: {e}", 'warning')
+            
+            # Charger les analytics
+            try:
+                analytics = load_from_firestore('analytics', 'current')
+                if analytics:
+                    with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(analytics, f, ensure_ascii=False, indent=2)
+                    log("✅ Analytics chargé(s) depuis Firestore", 'success')
+                else:
+                    log("ℹ️ Aucun analytics trouvé dans Firestore (première utilisation)", 'info')
+            except Exception as e:
+                log(f"⚠️ Erreur chargement analytics depuis Firestore: {e}", 'warning')
+            
+            # Charger le cache Groq
+            try:
+                groq_cache_docs = get_all_from_firestore('groq_cache')
+                if groq_cache_docs:
+                    groq_cache = {}
+                    for doc in groq_cache_docs:
+                        match_name = doc.get('match_name', '')
+                        if match_name:
+                            groq_cache[match_name] = doc
+                    with open('groq_cache.json', 'w', encoding='utf-8') as f:
+                        json.dump(groq_cache, f, ensure_ascii=False, indent=2)
+                    log(f"✅ Cache Groq chargé depuis Firestore ({len(groq_cache)} entrée(s))", 'success')
+                else:
+                    log("ℹ️ Aucun cache Groq trouvé dans Firestore (première utilisation)", 'info')
+            except Exception as e:
+                log(f"⚠️ Erreur chargement cache Groq depuis Firestore: {e}", 'warning')
+            
+            # Charger l'historique des détections
+            try:
+                detections = get_all_from_firestore('detections')
+                if detections:
+                    detections.sort(key=lambda x: x.get('date', ''), reverse=True)
+                    detections = detections[:50]
+                    with open(DETECTIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(detections, f, ensure_ascii=False, indent=2)
+                    log(f"✅ {len(detections)} détection(s) chargée(s) depuis Firestore", 'success')
+                else:
+                    log("ℹ️ Aucune détection trouvée dans Firestore (première utilisation)", 'info')
+            except Exception as e:
+                log(f"⚠️ Erreur chargement détections depuis Firestore: {e}", 'warning')
+            
+            log("✅ Chargement Firestore terminé (collections vides = première utilisation, c'est normal)", 'success')
+            return True
+            
+        except Exception as e:
+            log(f"⚠️ Erreur chargement depuis Firestore: {e}", 'warning')
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    # Exécuter avec un timeout global de 20 secondes
     try:
-        log("📥 Chargement des données depuis Firestore...", 'info')
-        
-        # Charger les matchs (avec gestion d'erreur individuelle)
-        try:
-            matches = get_all_from_firestore('matches')
-            if matches:
-                with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(matches, f, ensure_ascii=False, indent=2)
-                log(f"✅ {len(matches)} match(s) chargé(s) depuis Firestore", 'success')
-            else:
-                log("ℹ️ Aucun match trouvé dans Firestore (collection vide - première utilisation)", 'info')
-        except Exception as e:
-            log(f"⚠️ Erreur chargement matchs depuis Firestore: {e}", 'warning')
-        
-        # Charger le status
-        try:
-            status = load_from_firestore('status', 'current')
-            if status:
-                with open('status.json', 'w', encoding='utf-8') as f:
-                    json.dump(status, f, ensure_ascii=False, indent=2)
-                log("✅ Status chargé depuis Firestore", 'success')
-            else:
-                log("ℹ️ Aucun status trouvé dans Firestore (première utilisation)", 'info')
-        except Exception as e:
-            log(f"⚠️ Erreur chargement status depuis Firestore: {e}", 'warning')
-        
-        # Charger les analytics
-        try:
-            analytics = load_from_firestore('analytics', 'current')
-            if analytics:
-                with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(analytics, f, ensure_ascii=False, indent=2)
-                log("✅ Analytics chargé(s) depuis Firestore", 'success')
-            else:
-                log("ℹ️ Aucun analytics trouvé dans Firestore (première utilisation)", 'info')
-        except Exception as e:
-            log(f"⚠️ Erreur chargement analytics depuis Firestore: {e}", 'warning')
-        
-        # Charger le cache Groq
-        try:
-            groq_cache_docs = get_all_from_firestore('groq_cache')
-            if groq_cache_docs:
-                groq_cache = {}
-                for doc in groq_cache_docs:
-                    match_name = doc.get('match_name', '')
-                    if match_name:
-                        groq_cache[match_name] = doc
-                with open('groq_cache.json', 'w', encoding='utf-8') as f:
-                    json.dump(groq_cache, f, ensure_ascii=False, indent=2)
-                log(f"✅ Cache Groq chargé depuis Firestore ({len(groq_cache)} entrée(s))", 'success')
-            else:
-                log("ℹ️ Aucun cache Groq trouvé dans Firestore (première utilisation)", 'info')
-        except Exception as e:
-            log(f"⚠️ Erreur chargement cache Groq depuis Firestore: {e}", 'warning')
-        
-        # Charger l'historique des détections
-        try:
-            detections = get_all_from_firestore('detections')
-            if detections:
-                detections.sort(key=lambda x: x.get('date', ''), reverse=True)
-                detections = detections[:50]
-                with open(DETECTIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(detections, f, ensure_ascii=False, indent=2)
-                log(f"✅ {len(detections)} détection(s) chargée(s) depuis Firestore", 'success')
-            else:
-                log("ℹ️ Aucune détection trouvée dans Firestore (première utilisation)", 'info')
-        except Exception as e:
-            log(f"⚠️ Erreur chargement détections depuis Firestore: {e}", 'warning')
-        
-        log("✅ Chargement Firestore terminé (collections vides = première utilisation, c'est normal)", 'success')
-        return True
-        
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_load_all)
+            result = future.result(timeout=20)  # Timeout global de 20 secondes
+            return result
+    except FutureTimeoutError:
+        log("⏱️ Timeout global (20s) lors du chargement Firestore - Désactivation de Firestore pour cette session", 'error')
+        global FIREBASE_INITIALIZED
+        FIREBASE_INITIALIZED = False  # Désactiver Firestore pour éviter d'autres blocages
+        log("ℹ️ Le bot continuera avec les fichiers JSON locaux uniquement", 'info')
+        return False
     except Exception as e:
-        log(f"⚠️ Erreur chargement depuis Firestore: {e}", 'warning')
-        import traceback
-        traceback.print_exc()
+        log(f"⚠️ Erreur lors du chargement Firestore: {e}", 'warning')
         return False
 
 # ====================
