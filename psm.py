@@ -58,9 +58,15 @@ DETECTIONS_HISTORY_FILE = 'detections_history.json'
 # ====================
 DB_FILE = 'psm_bot.db'
 db_conn = None  # Connexion SQLite
+DB_TIMEOUT = 20.0  # Timeout en secondes pour les opérations de base de données
+MAX_RETRIES = 3  # Nombre maximum de tentatives en cas de verrou
+RETRY_DELAY = 0.1  # Délai initial entre les tentatives (en secondes)
+
+# Verrou pour protéger les opérations critiques sur les matches
+matches_lock = threading.Lock()
 
 def get_db_connection():
-    """Obtient ou crée la connexion SQLite"""
+    """Obtient ou crée la connexion SQLite avec timeout"""
     global db_conn
     # #region agent log
     import json as json_module
@@ -73,17 +79,63 @@ def get_db_connection():
     except: pass
     # #endregion
     if db_conn is None:
-        db_conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-        db_conn.row_factory = sqlite3.Row  # Permet d'accéder aux colonnes par nom
-        # #region agent log
         try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:get_db_connection:NEW_CONN","message":"New DB connection created","data":{"db_file":DB_FILE},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
+            db_conn = sqlite3.connect(DB_FILE, check_same_thread=False, timeout=DB_TIMEOUT)
+            db_conn.row_factory = sqlite3.Row  # Permet d'accéder aux colonnes par nom
+            # #region agent log
+            try:
+                debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
+                os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+                with open(debug_log_path, 'a', encoding='utf-8') as f:
+                    f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:get_db_connection:NEW_CONN","message":"New DB connection created","data":{"db_file":DB_FILE,"timeout":DB_TIMEOUT},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+            except: pass
+            # #endregion
+        except sqlite3.OperationalError as e:
+            log(f"❌ Erreur connexion base de données: {e}", 'error')
+            db_conn = None
+            raise
     return db_conn
+
+def execute_with_retry(operation, *args, **kwargs):
+    """
+    Exécute une opération de base de données avec retry en cas de verrou.
+    
+    Args:
+        operation: Fonction à exécuter qui prend (conn, *args, **kwargs)
+        *args, **kwargs: Arguments à passer à l'opération
+    
+    Returns:
+        Résultat de l'opération ou None en cas d'échec
+    """
+    import time as time_module
+    last_error = None
+    
+    for attempt in range(MAX_RETRIES):
+        try:
+            conn = get_db_connection()
+            return operation(conn, *args, **kwargs)
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e).lower() or "locked" in str(e).lower():
+                last_error = e
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_DELAY * (2 ** attempt)  # Backoff exponentiel
+                    log(f"⚠️ Base de données verrouillée, nouvelle tentative dans {delay:.2f}s (tentative {attempt + 1}/{MAX_RETRIES})", 'warning')
+                    time_module.sleep(delay)
+                else:
+                    log(f"❌ Impossible d'accéder à la base de données après {MAX_RETRIES} tentatives: {e}", 'error')
+                    raise
+            else:
+                # Autre erreur opérationnelle, ne pas retry
+                log(f"❌ Erreur base de données: {e}", 'error')
+                raise
+        except Exception as e:
+            # Autres erreurs, ne pas retry
+            log(f"❌ Erreur inattendue: {e}", 'error')
+            raise
+    
+    if last_error:
+        raise last_error
+    return None
 
 def init_database():
     """Initialise la base de données SQLite et crée les tables si nécessaire"""
@@ -263,93 +315,53 @@ def migrate_json_to_sqlite():
 # Fonctions SQLite pour remplacer Firebase
 def save_match_to_db(match_data):
     """Sauvegarde ou met à jour un match dans la base de données"""
-    # #region agent log
-    import json as json_module
-    import os
-    try:
-        debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-        os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-        with open(debug_log_path, 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"psm.py:save_match_to_db:ENTRY","message":"save_match_to_db called","data":{"match_nom":match_data.get('nom'),"has_url":bool(match_data.get('url')),"db_file_exists":os.path.exists(DB_FILE)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-    except: pass
-    # #endregion
-    try:
-        conn = get_db_connection()
-        # #region agent log
-        try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:save_match_to_db:AFTER_CONN","message":"DB connection obtained","data":{"conn_is_none":conn is None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
+    def _save_operation(conn, match_data):
         cursor = conn.cursor()
-        cursor.execute('''
-            INSERT OR REPLACE INTO matches (nom, url, competition, date, time, lieu)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (
-            match_data.get('nom'),
-            match_data.get('url'),
-            match_data.get('competition'),
-            match_data.get('date'),
-            match_data.get('time'),
-            match_data.get('lieu')
-        ))
-        conn.commit()
-        # #region agent log
         try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"psm.py:save_match_to_db:SUCCESS","message":"Match saved successfully","data":{"match_nom":match_data.get('nom'),"rowcount":cursor.rowcount},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
-        return True
+            cursor.execute('''
+                INSERT OR REPLACE INTO matches (nom, url, competition, date, time, lieu)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                match_data.get('nom'),
+                match_data.get('url'),
+                match_data.get('competition'),
+                match_data.get('date'),
+                match_data.get('time'),
+                match_data.get('lieu')
+            ))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError as e:
+            conn.rollback()
+            raise  # Re-lancer pour gestion spécifique
+    
+    try:
+        return execute_with_retry(_save_operation, match_data)
+    except sqlite3.IntegrityError as e:
+        error_msg = str(e)
+        if "UNIQUE constraint" in error_msg or "unique" in error_msg.lower():
+            if "nom" in error_msg.lower():
+                log(f"❌ Erreur contrainte UNIQUE: Un match avec le nom '{match_data.get('nom')}' existe déjà", 'error')
+            else:
+                log(f"❌ Erreur contrainte UNIQUE: Un match avec cette URL existe déjà", 'error')
+        else:
+            log(f"❌ Erreur contrainte base de données: {e}", 'error')
+        return False
+    except sqlite3.OperationalError as e:
+        log(f"❌ Erreur opérationnelle SQLite: {e}", 'error')
+        return False
     except Exception as e:
-        # #region agent log
-        try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"psm.py:save_match_to_db:ERROR","message":"Save failed","data":{"match_nom":match_data.get('nom'),"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
-        log(f"⚠️ Erreur sauvegarde match dans SQLite: {e}", 'warning')
+        log(f"❌ Erreur sauvegarde match dans SQLite: {e} (type: {type(e).__name__})", 'error')
+        import traceback
+        traceback.print_exc()
         return False
 
 def load_matches_from_db():
     """Charge tous les matchs depuis la base de données"""
-    # #region agent log
-    import json as json_module
-    import os
-    try:
-        debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-        os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-        with open(debug_log_path, 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:ENTRY","message":"load_matches_from_db called","data":{"db_file_exists":os.path.exists(DB_FILE)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-    except: pass
-    # #endregion
-    try:
-        conn = get_db_connection()
-        # #region agent log
-        try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"psm.py:load_matches_from_db:AFTER_CONN","message":"DB connection obtained","data":{"conn_is_none":conn is None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
+    def _load_operation(conn):
         cursor = conn.cursor()
         cursor.execute('SELECT nom, url, competition, date, time, lieu FROM matches ORDER BY created_at DESC')
         rows = cursor.fetchall()
-        # #region agent log
-        try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:AFTER_QUERY","message":"Query executed","data":{"row_count":len(rows)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
         matches = []
         for row in rows:
             matches.append({
@@ -360,37 +372,72 @@ def load_matches_from_db():
                 'time': row['time'] if row['time'] else None,  # Convertir '' en None
                 'lieu': row['lieu'] if row['lieu'] else None   # Convertir '' en None
             })
-        # #region agent log
-        try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:RETURN","message":"Returning matches","data":{"match_count":len(matches),"match_names":[m.get('nom') for m in matches]},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
         return matches
+    
+    try:
+        return execute_with_retry(_load_operation)
+    except sqlite3.OperationalError as e:
+        log(f"❌ Erreur opérationnelle SQLite lors du chargement: {e}", 'error')
+        return []
     except Exception as e:
-        # #region agent log
-        try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"psm.py:load_matches_from_db:ERROR","message":"Load failed","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
-        log(f"⚠️ Erreur chargement matchs depuis SQLite: {e}", 'warning')
+        log(f"❌ Erreur chargement matchs depuis SQLite: {e} (type: {type(e).__name__})", 'error')
+        import traceback
+        traceback.print_exc()
         return []
 
 def delete_match_from_db(match_nom):
-    """Supprime un match de la base de données"""
-    try:
-        conn = get_db_connection()
+    """Supprime un match de la base de données avec suppression en cascade des données associées"""
+    def _delete_operation(conn, match_nom):
         cursor = conn.cursor()
-        cursor.execute('DELETE FROM matches WHERE nom = ?', (match_nom,))
-        conn.commit()
-        return cursor.rowcount > 0
+        deleted_count = 0
+        
+        try:
+            # Démarrer une transaction
+            cursor.execute('BEGIN TRANSACTION')
+            
+            # 1. Supprimer les détections associées
+            cursor.execute('DELETE FROM detections WHERE match = ?', (match_nom,))
+            detections_deleted = cursor.rowcount
+            if detections_deleted > 0:
+                log(f"🗑️ {detections_deleted} détection(s) supprimée(s) pour le match '{match_nom}'", 'info')
+            
+            # 2. Supprimer le cache Groq associé
+            cursor.execute('DELETE FROM groq_cache WHERE match_name = ?', (match_nom,))
+            cache_deleted = cursor.rowcount
+            if cache_deleted > 0:
+                log(f"🗑️ Cache Groq supprimé pour le match '{match_nom}'", 'info')
+            
+            # 3. Supprimer le match lui-même
+            cursor.execute('DELETE FROM matches WHERE nom = ?', (match_nom,))
+            match_deleted = cursor.rowcount
+            deleted_count = match_deleted
+            
+            if match_deleted > 0:
+                # Commit la transaction si tout s'est bien passé
+                conn.commit()
+                log(f"✅ Match '{match_nom}' et données associées supprimés avec succès", 'success')
+            else:
+                # Rollback si le match n'existe pas
+                conn.rollback()
+                log(f"⚠️ Match '{match_nom}' non trouvé dans la base de données", 'warning')
+            
+            return deleted_count > 0
+            
+        except Exception as e:
+            # Rollback en cas d'erreur
+            conn.rollback()
+            log(f"❌ Erreur lors de la suppression en cascade: {e}", 'error')
+            raise
+    
+    try:
+        return execute_with_retry(_delete_operation, match_nom)
+    except sqlite3.OperationalError as e:
+        log(f"❌ Erreur suppression match dans SQLite (verrou): {e}", 'error')
+        return False
     except Exception as e:
         log(f"⚠️ Erreur suppression match dans SQLite: {e}", 'warning')
+        import traceback
+        traceback.print_exc()
         return False
 
 def save_status_to_db(status_data):
@@ -611,12 +658,8 @@ def charger_matchs():
         except: pass
         # #endregion
         if matches:
-            # Sauvegarder dans le fichier local pour backup
-            try:
-                with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(matches, f, ensure_ascii=False, indent=2)
-            except Exception as e:
-                log(f"⚠️ Erreur sauvegarde backup matches.json: {e}", 'warning')
+            # Ne pas faire de backup automatique vers JSON (créerait des incohérences)
+            # Le backup sera fait explicitement après les opérations réussies
             log(f"📂 {len(matches)} match(s) chargé(s) depuis SQLite", 'info')
             return matches
         
@@ -699,10 +742,31 @@ def charger_matchs():
             log(f"⚠️ Erreur sauvegarde matches.json: {e}", 'warning')
         log(f"📂 matches.json créé avec {len(matchs_default)} match(s) par défaut", 'info')
         return matchs_default
+    except sqlite3.OperationalError as e:
+        log(f"❌ Erreur SQLite (verrou ou autre): {e}", 'error')
+        # En cas d'erreur SQLite, essayer de charger depuis JSON en dernier recours
+        if os.path.exists(MATCHES_FILE):
+            try:
+                with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
+                    matches = json.load(f)
+                log(f"⚠️ Chargement depuis matches.json en dernier recours: {len(matches)} match(s)", 'warning')
+                return matches if matches else []
+            except Exception as e2:
+                log(f"❌ Impossible de charger depuis matches.json: {e2}", 'error')
+        return []
     except Exception as e:
-        log(f"⚠️ Erreur chargement matchs: {e}", 'warning')
+        log(f"❌ Erreur critique dans charger_matchs: {e}", 'error')
         import traceback
         traceback.print_exc()
+        # En cas d'erreur critique, essayer de charger depuis JSON en dernier recours
+        if os.path.exists(MATCHES_FILE):
+            try:
+                with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
+                    matches = json.load(f)
+                log(f"⚠️ Chargement depuis matches.json en dernier recours: {len(matches)} match(s)", 'warning')
+                return matches if matches else []
+            except Exception as e2:
+                log(f"❌ Impossible de charger depuis matches.json: {e2}", 'error')
         return []
 
 # ====================
@@ -1313,110 +1377,115 @@ def api_get_status():
 def api_get_matches():
     """Liste tous les matchs surveillés"""
     try:
-        with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
-            matches = json.load(f)
+        # Utiliser charger_matchs() pour être cohérent avec le reste du code
+        matches = charger_matchs()
         return jsonify(matches)
-    except FileNotFoundError:
-        # Si le fichier n'existe pas, le créer avec les matchs par défaut
-        default_matches = charger_matchs()
-        return jsonify(default_matches)
+    except Exception as e:
+        log(f"❌ Erreur chargement matches: {e}", 'error')
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/matches', methods=['POST'])
 def api_add_match():
     """Ajoute un nouveau match à surveiller"""
-    try:
-        data = request.json
-        nom = data.get('nom', '').strip()
-        url = data.get('url', '').strip()
-        
-        # Validation
-        if not nom or not url:
-            return jsonify({"error": "Nom et URL requis"}), 400
-        
-        # Validation de l'URL
+    with matches_lock:  # Protéger l'opération avec un verrou
         try:
-            from urllib.parse import urlparse
-            parsed = urlparse(url)
-            if not parsed.scheme or not parsed.netloc:
-                return jsonify({"error": "URL invalide. Veuillez entrer une URL complète (ex: https://...)"}), 400
-        except Exception:
-            return jsonify({"error": "URL invalide"}), 400
-        
-        # Lire les matchs existants depuis SQLite (source de vérité)
-        matches = charger_matchs()
-        # #region agent log
-        import json as json_module
-        try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"psm.py:api_add_match:AFTER_CHARGER","message":"After charger_matchs in api_add_match","data":{"existing_count":len(matches),"new_match_nom":nom},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
-        
-        # Vérifier si le match existe déjà
-        for match in matches:
-            if match.get('nom') == nom:
-                return jsonify({"error": f"Un match avec le nom '{nom}' existe déjà"}), 409
-            if match.get('url') == url:
-                return jsonify({"error": f"Un match avec cette URL existe déjà"}), 409
-        
-        # Ajouter le nouveau match avec tous les champs
-        competition = data.get('competition', 'Ligue 1')
-        date = data.get('date')
-        time = data.get('time', '21:00')
-        lieu = data.get('lieu', 'Parc des Princes')
-        
-        new_match = {
-            "nom": nom, 
-            "url": url,
-            "competition": competition,
-            "date": date,
-            "time": time,
-            "lieu": lieu
-        }
-        matches.append(new_match)
-        
-        # Sauvegarder dans SQLite (source de vérité)
-        save_result = save_match_to_db(new_match)
-        # #region agent log
-        try:
-            debug_log_path = os.path.join(os.path.dirname(__file__), '.cursor', 'debug.log')
-            os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
-            with open(debug_log_path, 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"psm.py:api_add_match:AFTER_SAVE","message":"After save_match_to_db","data":{"save_success":save_result,"match_nom":nom},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
-        if save_result:
+            data = request.json
+            nom = data.get('nom', '').strip()
+            url = data.get('url', '').strip()
+            
+            # Validation
+            if not nom or not url:
+                return jsonify({"error": "Nom et URL requis"}), 400
+            
+            # Validation de l'URL
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                if not parsed.scheme or not parsed.netloc:
+                    return jsonify({"error": "URL invalide. Veuillez entrer une URL complète (ex: https://...)"}), 400
+            except Exception:
+                return jsonify({"error": "URL invalide"}), 400
+            
+            # Vérifier l'unicité dans la DB d'abord (source de vérité)
+            def _check_uniqueness(conn, nom, url):
+                cursor = conn.cursor()
+                cursor.execute('SELECT nom, url FROM matches WHERE nom = ? OR url = ?', (nom, url))
+                return cursor.fetchone()
+            
+            try:
+                existing_match = execute_with_retry(_check_uniqueness, nom, url)
+                if existing_match:
+                    existing_nom = existing_match[0] if existing_match[0] else None
+                    existing_url = existing_match[1] if len(existing_match) > 1 and existing_match[1] else None
+                    if existing_nom == nom:
+                        return jsonify({"error": f"Un match avec le nom '{nom}' existe déjà"}), 409
+                    elif existing_url == url:
+                        return jsonify({"error": f"Un match avec cette URL existe déjà"}), 409
+            except sqlite3.OperationalError as e:
+                log(f"⚠️ Erreur vérification unicité (verrou): {e}", 'warning')
+                # Continuer, on vérifiera après avec l'insertion qui échouera si doublon
+            except Exception as e:
+                log(f"⚠️ Erreur vérification unicité: {e}", 'warning')
+                # Continuer, on vérifiera après avec l'insertion qui échouera si doublon
+            
+            # Préparer le nouveau match
+            competition = data.get('competition', 'Ligue 1')
+            date = data.get('date')
+            time = data.get('time', '21:00')
+            lieu = data.get('lieu', 'Parc des Princes')
+            
+            new_match = {
+                "nom": nom, 
+                "url": url,
+                "competition": competition,
+                "date": date,
+                "time": time,
+                "lieu": lieu
+            }
+            
+            # ORDRE CORRIGÉ : Sauvegarder dans SQLite D'ABORD (source de vérité)
+            save_result = save_match_to_db(new_match)
+            if not save_result:
+                return jsonify({"error": "Impossible de sauvegarder le match dans la base de données"}), 500
+            
             log(f"✅ Match sauvegardé dans SQLite: {nom}", 'success')
-        else:
-            log(f"⚠️ Erreur sauvegarde SQLite pour: {nom}", 'warning')
-        
-        # Sauvegarder aussi dans le fichier local (backup)
-        try:
-            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                json.dump(matches, f, ensure_ascii=False, indent=2)
-            log(f"✅ Backup matches.json mis à jour", 'success')
+            
+            # Recharger les matches depuis la DB pour avoir la liste à jour
+            matches = charger_matchs()
+            
+            # Sauvegarder aussi dans le fichier local (backup)
+            try:
+                with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(matches, f, ensure_ascii=False, indent=2)
+                log(f"✅ Backup matches.json mis à jour", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur sauvegarde backup matches.json: {e}", 'warning')
+            
+            # Mettre à jour status.json immédiatement
+            global MATCHS
+            MATCHS = matches  # Mettre à jour la variable globale
+            sauvegarder_status()  # Mettre à jour status.json pour que le site l'affiche
+            
+            log(f"✅ Match ajouté: {nom} ({url})", 'success')
+            log(f"📊 Total de matchs surveillés: {len(matches)}", 'info')
+            log(f"🔄 Le match sera vérifié au prochain cycle de surveillance (~90 secondes)", 'info')
+            log(f"💾 status.json mis à jour - le nouveau match apparaît sur le site public", 'success')
+            
+            return jsonify({"success": True, "match": new_match}), 201
+        except sqlite3.IntegrityError as e:
+            error_msg = str(e)
+            if "UNIQUE constraint" in error_msg or "unique" in error_msg.lower():
+                if "nom" in error_msg.lower():
+                    return jsonify({"error": f"Un match avec le nom '{nom}' existe déjà"}), 409
+                else:
+                    return jsonify({"error": f"Un match avec cette URL existe déjà"}), 409
+            log(f"❌ Erreur contrainte base de données: {e}", 'error')
+            return jsonify({"error": "Erreur de contrainte dans la base de données"}), 500
         except Exception as e:
-            log(f"⚠️ Erreur sauvegarde backup matches.json: {e}", 'warning')
-        
-        # Mettre à jour status.json immédiatement
-        global MATCHS
-        MATCHS = matches  # Mettre à jour la variable globale
-        sauvegarder_status()  # Mettre à jour status.json pour que le site l'affiche
-        
-        log(f"✅ Match ajouté: {nom} ({url})", 'success')
-        log(f"📊 Total de matchs surveillés: {len(matches)}", 'info')
-        log(f"🔄 Le match sera vérifié au prochain cycle de surveillance (~90 secondes)", 'info')
-        log(f"💾 matches.json mis à jour avec succès", 'success')
-        log(f"💾 status.json mis à jour - le nouveau match apparaît sur le site public", 'success')
-        
-        return jsonify({"success": True, "match": new_match}), 201
-    except Exception as e:
-        print(f"❌ Erreur ajout match: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+            log(f"❌ Erreur ajout match: {e}", 'error')
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
 
 @app.route('/api/matches/<match_name>', methods=['GET'])
 def api_get_match_details(match_name):
@@ -1438,56 +1507,62 @@ def api_get_match_details(match_name):
 @app.route('/api/matches/<int:index>', methods=['DELETE'])
 def api_delete_match(index):
     """Supprime un match par son index"""
-    try:
-        # PRIORITÉ : Lire depuis SQLite (source de vérité)
-        matches = charger_matchs()
-        
-        if 0 <= index < len(matches):
-            deleted = matches.pop(index)
+    with matches_lock:  # Protéger l'opération avec un verrou
+        try:
+            # PRIORITÉ : Lire depuis SQLite (source de vérité)
+            matches = charger_matchs()
             
-            # Supprimer de SQLite (source de vérité)
-            if delete_match_from_db(deleted.get('nom', '')):
-                log(f"✅ Match supprimé de SQLite: {deleted.get('nom')}", 'success')
+            if 0 <= index < len(matches):
+                deleted = matches[index]  # Ne pas pop() encore, on supprime de la DB d'abord
+                match_nom = deleted.get('nom', '')
+                
+                if not match_nom:
+                    return jsonify({"error": "Nom de match invalide"}), 400
+                
+                # ORDRE CORRIGÉ : Supprimer de SQLite D'ABORD (source de vérité)
+                delete_result = delete_match_from_db(match_nom)
+                
+                if not delete_result:
+                    return jsonify({"error": f"Impossible de supprimer le match '{match_nom}' de la base de données"}), 500
+                
+                log(f"✅ Match supprimé de SQLite: {match_nom}", 'success')
+                
+                # Recharger les matches depuis la DB pour avoir la liste à jour
+                matches = charger_matchs()
+                
+                # Sauvegarder aussi dans le fichier local (backup)
+                try:
+                    with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(matches, f, ensure_ascii=False, indent=2)
+                    log(f"💾 matches.json mis à jour avec succès", 'success')
+                except Exception as e:
+                    log(f"⚠️ Erreur sauvegarde matches.json: {e}", 'warning')
+                
+                # Mettre à jour status.json immédiatement
+                global MATCHS
+                MATCHS = matches  # Mettre à jour la variable globale
+                sauvegarder_status()  # Mettre à jour status.json
+                
+                log(f"🗑️ Match supprimé: {match_nom} ({deleted.get('url')})", 'error')
+                log(f"📊 Matchs restants: {len(matches)}", 'info')
+                log(f"💾 status.json mis à jour - le site public reflète le changement", 'success')
+                log(f"⏸️ Le match ne sera plus surveillé au prochain cycle", 'info')
+                
+                return jsonify({"success": True, "deleted": deleted})
             else:
-                log(f"⚠️ Match non trouvé dans SQLite (peut-être déjà supprimé): {deleted.get('nom')}", 'warning')
-            
-            # Sauvegarder aussi dans le fichier local (backup)
-            try:
-                with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(matches, f, ensure_ascii=False, indent=2)
-                log(f"💾 matches.json mis à jour avec succès", 'success')
-            except Exception as e:
-                log(f"⚠️ Erreur sauvegarde matches.json: {e}", 'warning')
-            
-            # Mettre à jour status.json immédiatement
-            global MATCHS
-            MATCHS = matches  # Mettre à jour la variable globale
-            sauvegarder_status()  # Mettre à jour status.json
-            
-            log(f"🗑️ Match supprimé: {deleted.get('nom')} ({deleted.get('url')})", 'error')
-            log(f"📊 Matchs restants: {len(matches)}", 'info')
-            log(f"💾 status.json mis à jour - le site public reflète le changement", 'success')
-            log(f"⏸️ Le match ne sera plus surveillé au prochain cycle", 'info')
-            
-            return jsonify({"success": True, "deleted": deleted})
-        else:
-            return jsonify({"error": "Index invalide"}), 404
-    except Exception as e:
-        log(f"❌ Erreur suppression match: {e}", 'error')
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+                return jsonify({"error": "Index invalide"}), 404
+        except Exception as e:
+            log(f"❌ Erreur suppression match: {e}", 'error')
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
 
 @app.route('/api/matches/<int:index>/check', methods=['POST'])
 def api_force_check(index):
     """Force la vérification d'un match spécifique"""
     try:
-        # Charger les matchs
-        try:
-            with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
-                matches = json.load(f)
-        except FileNotFoundError:
-            matches = charger_matchs()
+        # Utiliser charger_matchs() pour être cohérent avec le reste du code
+        matches = charger_matchs()
         
         # Vérifier que l'index est valide
         if 0 <= index < len(matches):
@@ -1511,7 +1586,7 @@ def api_force_check(index):
         else:
             return jsonify({"error": "Index invalide"}), 404
     except Exception as e:
-        print(f"❌ Erreur vérification forcée: {e}")
+        log(f"❌ Erreur vérification forcée: {e}", 'error')
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
