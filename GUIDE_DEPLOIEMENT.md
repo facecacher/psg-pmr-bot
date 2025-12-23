@@ -806,9 +806,58 @@ Valeur : Le contenu COMPLET du fichier JSON téléchargé (en une seule ligne, s
 > 2. Copiez TOUT le contenu (Ctrl+A, Ctrl+C)
 > 3. Collez-le dans la variable d'environnement (Dokploy gère automatiquement les retours à la ligne)
 > 
-> **Alternative** : Si Dokploy supporte l'upload de fichiers, vous pouvez :
-> - Uploader le fichier JSON dans Dokploy
-> - Utiliser la variable : `FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json`
+> **⚠️ Si vous avez des erreurs de parsing JSON**, utilisez la méthode alternative ci-dessous.
+
+#### 6.1 Alternative : Utiliser un fichier (Recommandé si erreur de parsing)
+
+Si vous rencontrez des erreurs de parsing JSON avec la variable `FIREBASE_CREDENTIALS`, vous pouvez utiliser un fichier à la place :
+
+**Méthode 1 : Via le Dockerfile (Recommandé)**
+
+1. **Ajoutez le fichier JSON au dépôt** (temporairement, juste pour le déploiement) :
+   - Renommez le fichier téléchargé en `firebase-credentials.json`
+   - Placez-le à la racine du projet (même niveau que `psm.py`)
+   - **⚠️ IMPORTANT** : Ajoutez `firebase-credentials.json` au `.gitignore` AVANT de le commiter (déjà fait)
+
+2. **Modifiez le Dockerfile** pour copier le fichier :
+   - Ouvrez `Dockerfile`
+   - Ajoutez cette ligne après `COPY psm.py` :
+   ```dockerfile
+   COPY firebase-credentials.json /app/firebase-credentials.json
+   ```
+   - **⚠️ ATTENTION** : Ne commitez JAMAIS le fichier sur GitHub ! Utilisez seulement pour le build.
+
+3. **Configurez la variable d'environnement dans Dokploy** :
+   - **Nom** : `FIREBASE_CREDENTIALS_PATH`
+   - **Valeur** : `/app/firebase-credentials.json`
+   - **Supprimez** la variable `FIREBASE_CREDENTIALS` si elle existe
+
+4. **Déployez** : Le fichier sera copié dans le container au build
+
+**Méthode 2 : Via un volume mount (Si Dokploy le supporte)**
+
+1. **Dans Dokploy**, allez dans les paramètres de votre application Bot
+2. Cherchez la section **"Volumes"** ou **"Volume Mounts"**
+3. Configurez un volume :
+   - **Host Path** : Chemin vers votre fichier `firebase-credentials.json` sur le serveur Dokploy
+   - **Container Path** : `/app/firebase-credentials.json`
+   - **Type** : `bind` ou `volume`
+
+4. **Configurez la variable d'environnement** :
+   - **Nom** : `FIREBASE_CREDENTIALS_PATH`
+   - **Valeur** : `/app/firebase-credentials.json`
+   - **Supprimez** la variable `FIREBASE_CREDENTIALS` si elle existe
+
+**Méthode 3 : Via Secrets Dokploy (Si disponible)**
+
+1. **Dans Dokploy**, allez dans **"Secrets"** ou **"Files"**
+2. **Uploadez** le fichier `firebase-credentials.json`
+3. Dokploy vous donnera un chemin (ex: `/secrets/firebase-credentials.json`)
+4. **Configurez la variable d'environnement** :
+   - **Nom** : `FIREBASE_CREDENTIALS_PATH`
+   - **Valeur** : Le chemin fourni par Dokploy (ex: `/secrets/firebase-credentials.json`)
+
+**⚠️ Sécurité** : Quelle que soit la méthode, assurez-vous que le fichier n'est **JAMAIS** commité sur GitHub !
 
 #### 7. Redémarrer l'Application
 
