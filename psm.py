@@ -1366,7 +1366,11 @@ def api_get_analytics():
                 with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
                     analytics = json.load(f)
             except FileNotFoundError:
-                analytics = None
+                analytics = {}
+        
+        # S'assurer que analytics est un dictionnaire (pas None)
+        if analytics is None:
+            analytics = {}
         
         # S'assurer que toutes les propriétés existent
         default_values = {
