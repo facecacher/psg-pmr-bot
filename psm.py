@@ -53,6 +53,14 @@ except:
         pass  # Si la locale n'est pas disponible, on utilisera une fonction de remplacement
 
 # ====================
+# CHEMINS DES FICHIERS
+# ====================
+MATCHES_FILE = 'matches.json'
+ANALYTICS_FILE = 'analytics.json'
+GROQ_CACHE_FILE = 'groq_cache.json'
+DETECTIONS_HISTORY_FILE = 'detections_history.json'
+
+# ====================
 # CONFIGURATION FIREBASE/FIRESTORE
 # ====================
 FIREBASE_INITIALIZED = False
@@ -83,11 +91,17 @@ def init_firebase():
         if credentials_str:
             try:
                 import json as json_module
-                cred_dict = json_module.loads(credentials_str)
+                # Nettoyer la chaîne (enlever les retours à la ligne en début/fin si présents)
+                credentials_str_clean = credentials_str.strip()
+                cred_dict = json_module.loads(credentials_str_clean)
                 cred = credentials.Certificate(cred_dict)
                 log("✅ Credentials Firebase chargés depuis FIREBASE_CREDENTIALS", 'success')
+            except json.JSONDecodeError as e:
+                log(f"❌ Erreur parsing FIREBASE_CREDENTIALS (JSON invalide): {e}", 'error')
+                log(f"💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide complet", 'info')
+                log(f"💡 Longueur de la chaîne: {len(credentials_str)} caractères", 'info')
             except Exception as e:
-                log(f"⚠️ Erreur parsing FIREBASE_CREDENTIALS: {e}", 'warning')
+                log(f"❌ Erreur chargement credentials Firebase: {e}", 'error')
         
         # Sinon, essayer depuis un fichier
         elif credentials_path and os.path.exists(credentials_path):
@@ -259,7 +273,7 @@ def load_all_from_firestore():
 # ====================
 # HISTORIQUE DES DÉTECTIONS PMR
 # ====================
-DETECTIONS_HISTORY_FILE = 'detections_history.json'
+# DETECTIONS_HISTORY_FILE est défini plus haut avec les autres constantes
 
 def charger_historique_detections():
     """Charge l'historique des détections PMR"""
@@ -651,7 +665,7 @@ def get_comparison_matches(match_name, home_team, limit=3):
 # ====================
 # SYSTÈME DE CACHE GROQ
 # ====================
-GROQ_CACHE_FILE = 'groq_cache.json'
+# GROQ_CACHE_FILE est défini plus haut avec les autres constantes
 
 def get_cached_groq_data(match_name):
     """Récupère les données en cache si elles existent et sont récentes (< 24h)"""
@@ -953,9 +967,7 @@ app = Flask(__name__)
 # Cela évite les conflits de headers CORS multiples
 CORS(app, resources={r"/api/*": {"origins": "*", "supports_credentials": False}})
 
-# Chemins des fichiers
-MATCHES_FILE = 'matches.json'
-ANALYTICS_FILE = 'analytics.json'
+# MATCHES_FILE et ANALYTICS_FILE sont définis plus haut avec les autres constantes
 
 @app.route('/api/status', methods=['GET'])
 def api_get_status():
