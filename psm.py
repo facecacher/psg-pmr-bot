@@ -814,10 +814,18 @@ def save_groq_cache(match_name, data):
     except Exception as e:
         log(f"⚠️ Erreur sauvegarde cache: {e}", 'warning')
 
-# ✅ INITIALISATION FIREBASE AU DÉMARRAGE
+# ✅ INITIALISATION FIREBASE AU DÉMARRAGE (non-bloquant)
 if init_firebase():
-    # Charger toutes les données depuis Firestore
-    load_all_from_firestore()
+    # Charger toutes les données depuis Firestore dans un thread séparé pour ne pas bloquer le démarrage
+    def load_firestore_async():
+        try:
+            load_all_from_firestore()
+        except Exception as e:
+            log(f"⚠️ Erreur chargement Firestore asynchrone: {e}", 'warning')
+    
+    # Lancer dans un thread pour ne pas bloquer le démarrage du bot
+    threading.Thread(target=load_firestore_async, daemon=True).start()
+    log("ℹ️ Chargement Firestore en arrière-plan (non-bloquant)", 'info')
 else:
     log("ℹ️ Firestore non configuré, utilisation des fichiers JSON locaux", 'info')
 
