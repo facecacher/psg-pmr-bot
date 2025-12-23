@@ -141,6 +141,36 @@ def init_firebase():
         
         # Obtenir l'instance Firestore
         db = firestore.client()
+        
+        # TESTER la connexion avec un timeout court pour vérifier que les credentials sont valides
+        def _test_connection():
+            """Fonction interne pour tester la connexion Firestore"""
+            try:
+                test_ref = db.collection('_test').document('_test')
+                test_ref.get()  # Essayer une opération simple
+                return True
+            except Exception as e:
+                raise e
+        
+        try:
+            # Tester avec un timeout de 5 secondes
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_test_connection)
+                future.result(timeout=5)
+        except FutureTimeoutError:
+            # Timeout = problème réseau, mais pas nécessairement credentials invalides
+            log("⚠️ Timeout lors du test de connexion Firestore (peut être normal si réseau lent)", 'warning')
+        except Exception as test_error:
+            error_str = str(test_error)
+            if 'invalid_grant' in error_str or 'Invalid JWT' in error_str or 'Invalid JWT Signature' in error_str:
+                log("❌ Credentials Firebase invalides (Invalid JWT Signature). Firestore désactivé.", 'error')
+                log("💡 Vérifiez que FIREBASE_CREDENTIALS contient un JSON valide et complet", 'info')
+                log("💡 Vous devrez peut-être régénérer les credentials depuis la console Firebase", 'info')
+                FIREBASE_INITIALIZED = False
+                return False
+            # Autres erreurs sont OK (collection n'existe pas, etc.)
+            # On continue l'initialisation car les credentials semblent valides
+        
         FIREBASE_INITIALIZED = True
         log(f"✅ Firebase initialisé avec succès (Project ID: {project_id})", 'success')
         return True
@@ -413,47 +443,54 @@ def sauvegarder_detection(match_nom, nb_places):
 
 # Charger les matchs depuis le fichier JSON ou Firestore
 def charger_matchs():
+    """Charge les matchs depuis le fichier JSON ou Firestore (fichier local en priorité pour éviter les blocages)"""
     try:
-        # Essayer Firestore d'abord
-        if FIREBASE_INITIALIZED:
-            matches = get_all_from_firestore('matches')
-            if matches:
-                # Sauvegarder dans le fichier local pour compatibilité
-                with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(matches, f, ensure_ascii=False, indent=2)
-                log(f"📂 {len(matches)} match(s) chargé(s) depuis Firestore", 'info')
-                return matches
-        
-        # Fallback sur fichier local
+        # PRIORITÉ 1 : Fichier local (toujours rapide, pas de blocage)
         try:
-            with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
-                matches = json.load(f)
-            log(f"📂 matches.json chargé: {len(matches)} match(s)", 'info')
-            return matches
-        except FileNotFoundError:
-            # Matchs par défaut si le fichier n'existe pas
-            matchs_default = [
-        {
-            "nom": "PSG vs PARIS FC",
-            "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-sg-vs-paris-fc-1",
-            "competition": "Ligue 1",
-            "date": None,
-            "time": "21:00",
-            "lieu": "Parc des Princes"
-        },
-        {
-            "nom": "PSG vs RENNE",
-            "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-vs-rennes-5",
-            "competition": "Ligue 1",
-            "date": None,
-            "time": "21:00",
-            "lieu": "Parc des Princes"
-                }
-            ]
-            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                json.dump(matchs_default, f, ensure_ascii=False, indent=2)
-            log(f"📂 matches.json créé avec {len(matchs_default)} match(s) par défaut", 'info')
-            return matchs_default
+            if os.path.exists(MATCHES_FILE):
+                with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
+                    matches = json.load(f)
+                log(f"📂 matches.json chargé: {len(matches)} match(s)", 'info')
+                return matches
+        except Exception as e:
+            log(f"⚠️ Erreur lecture matches.json: {e}", 'warning')
+        
+        # PRIORITÉ 2 : Essayer Firestore seulement si le fichier n'existe pas (avec timeout)
+        if FIREBASE_INITIALIZED:
+            try:
+                matches = get_all_from_firestore('matches')
+                if matches:
+                    # Sauvegarder dans le fichier local pour les prochaines fois
+                    with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(matches, f, ensure_ascii=False, indent=2)
+                    log(f"📂 {len(matches)} match(s) chargé(s) depuis Firestore", 'success')
+                    return matches
+            except Exception as e:
+                log(f"⚠️ Erreur chargement Firestore, utilisation matchs par défaut: {e}", 'warning')
+        
+        # PRIORITÉ 3 : Matchs par défaut si rien n'existe
+        matchs_default = [
+            {
+                "nom": "PSG vs PARIS FC",
+                "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-sg-vs-paris-fc-1",
+                "competition": "Ligue 1",
+                "date": None,
+                "time": "21:00",
+                "lieu": "Parc des Princes"
+            },
+            {
+                "nom": "PSG vs RENNE",
+                "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-vs-rennes-5",
+                "competition": "Ligue 1",
+                "date": None,
+                "time": "21:00",
+                "lieu": "Parc des Princes"
+            }
+        ]
+        with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(matchs_default, f, ensure_ascii=False, indent=2)
+        log(f"📂 matches.json créé avec {len(matchs_default)} match(s) par défaut", 'info')
+        return matchs_default
     except Exception as e:
         log(f"⚠️ Erreur chargement matchs: {e}", 'warning')
         return []
@@ -1014,7 +1051,7 @@ def verifier_match(match):
 
             pmr_elements = page.query_selector_all('div[data-offer-type="PMR"]')
             log(f"{nom} → PMR trouvées : {len(pmr_elements)}", 'info')
-            
+
             # Sauvegarder la détection si des PMR sont trouvées
             if len(pmr_elements) > 0:
                 sauvegarder_detection(nom, len(pmr_elements))
