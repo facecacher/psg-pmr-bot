@@ -698,6 +698,227 @@ Avant de considérer le déploiement comme terminé, vérifiez :
 
 ---
 
+---
+
+## 🔥 Configuration Firebase (Optionnel mais Recommandé)
+
+Firebase Firestore permet de persister toutes vos données (matchs, status, analytics, cache Groq, historique des détections) dans le cloud, évitant ainsi la perte de données lors des redéploiements.
+
+### 📋 Prérequis
+
+1. Un compte Google (gratuit)
+2. Accès à la console Firebase : https://console.firebase.google.com/
+
+### 🚀 Étapes de Configuration
+
+#### 1. Créer un Projet Firebase
+
+1. Allez sur https://console.firebase.google.com/
+2. Cliquez sur **"Ajouter un projet"** (ou "Add project")
+3. Entrez un nom pour votre projet (ex: `psm-bot` ou `psg-pmr-bot`)
+4. Désactivez Google Analytics (optionnel, mais recommandé pour simplifier)
+5. Cliquez sur **"Créer le projet"** puis **"Continuer"**
+
+#### 2. Activer Firestore Database
+
+1. Dans la console Firebase, ouvrez le menu de gauche
+2. Allez dans **"Firestore Database"** (ou "Build" > "Firestore Database")
+3. Cliquez sur **"Créer une base de données"**
+4. Choisissez le mode :
+   - **Mode production** (recommandé)
+   - **Région** : `europe-west` (ou `europe-west1` pour la France)
+5. Cliquez sur **"Activer"**
+
+#### 3. Configurer les Règles de Sécurité Firestore
+
+1. Dans Firestore Database, allez dans l'onglet **"Règles"**
+2. Remplacez les règles par :
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Autoriser la lecture publique, écriture uniquement via Admin SDK
+    match /matches/{matchId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    match /status/{document} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    match /analytics/{document} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    match /groq_cache/{document} {
+      allow read: if false;
+      allow write: if false;
+    }
+    
+    match /detections/{document} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
+```
+
+3. Cliquez sur **"Publier"**
+
+> **Note** : L'écriture se fait uniquement via l'Admin SDK côté serveur (avec les credentials), donc ces règles sont principalement pour la sécurité.
+
+#### 4. Créer une Clé de Compte de Service
+
+1. Dans la console Firebase, cliquez sur l'icône ⚙️ (**Paramètres du projet**)
+2. Allez dans l'onglet **"Comptes de service"**
+3. Cliquez sur **"Générer une nouvelle clé privée"**
+4. Une fenêtre s'ouvre : cliquez sur **"Générer la clé"**
+5. Un fichier JSON est téléchargé (ex: `psm-bot-xxxxx-firebase-adminsdk-xxxxx.json`)
+6. **⚠️ IMPORTANT** : Conservez ce fichier en sécurité et ne le commitez JAMAIS sur GitHub
+
+#### 5. Obtenir le Project ID
+
+1. Dans **Paramètres du projet** > **Général**
+2. Notez le **Project ID** (ex: `psm-bot-7140d`)
+
+#### 6. Configurer dans Dokploy
+
+1. Ouvrez votre **application Bot** dans Dokploy
+2. Allez dans **"Variables d'environnement"**
+3. Ajoutez ces variables :
+
+**Variable 1 : `FIREBASE_PROJECT_ID`**
+```
+Valeur : votre-project-id (ex: psm-bot-7140d)
+```
+
+**Variable 2 : `FIREBASE_CREDENTIALS`**
+```
+Valeur : Le contenu COMPLET du fichier JSON téléchargé (en une seule ligne, sans retours à la ligne)
+```
+
+> **Comment obtenir la valeur de `FIREBASE_CREDENTIALS` :**
+> 1. Ouvrez le fichier JSON téléchargé à l'étape 4
+> 2. Copiez TOUT le contenu (Ctrl+A, Ctrl+C)
+> 3. Collez-le dans la variable d'environnement (Dokploy gère automatiquement les retours à la ligne)
+> 
+> **Alternative** : Si Dokploy supporte l'upload de fichiers, vous pouvez :
+> - Uploader le fichier JSON dans Dokploy
+> - Utiliser la variable : `FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json`
+
+#### 7. Redémarrer l'Application
+
+1. Redémarrez l'application Bot dans Dokploy
+2. Vérifiez les logs : vous devriez voir :
+   ```
+   ✅ Credentials Firebase chargés depuis FIREBASE_CREDENTIALS
+   ✅ Firebase initialisé avec succès (Project ID: psm-bot-7140d)
+   📥 Chargement des données depuis Firestore...
+   ✅ X match(s) chargé(s) depuis Firestore
+   ✅ Status chargé depuis Firestore
+   ✅ Analytics chargé(s) depuis Firestore
+   ✅ Cache Groq chargé depuis Firestore (X entrée(s))
+   ✅ X détection(s) chargée(s) depuis Firestore
+   ✅ Toutes les données ont été chargées depuis Firestore
+   ```
+
+#### 8. Vérifier dans la Console Firebase
+
+1. Allez dans **Firestore Database** > **Données**
+2. Vous devriez voir les collections créées automatiquement :
+   - `matches/` : Liste des matchs surveillés
+   - `status/` : État actuel du bot
+   - `analytics/` : Statistiques du site
+   - `groq_cache/` : Cache des analyses Groq
+   - `detections/` : Historique des détections PMR
+
+### 📊 Structure des Données dans Firestore
+
+```
+psm-bot/
+  ├── matches/              (Collection)
+  │   ├── PSG_vs_OM/        (Document)
+  │   │   ├── nom: "PSG vs OM"
+  │   │   ├── url: "https://..."
+  │   │   ├── competition: "Ligue 1"
+  │   │   ├── date: "2025-01-15"
+  │   │   ├── time: "21:00"
+  │   │   └── lieu: "Parc des Princes"
+  │   └── PSG_vs_LILLE/     (Document)
+  │
+  ├── status/               (Collection)
+  │   └── current/          (Document unique)
+  │       ├── bot_actif: true
+  │       ├── matchs: [...]
+  │       └── statistiques: {...}
+  │
+  ├── analytics/            (Collection)
+  │   └── current/          (Document unique)
+  │       ├── visiteurs_totaux: 500
+  │       ├── visiteurs_en_ligne: 10
+  │       └── historique_7j: [...]
+  │
+  ├── groq_cache/           (Collection)
+  │   ├── PSG vs OM/        (Document par match)
+  │   │   ├── analysis: {...}
+  │   │   ├── last_updated: "2025-01-10T10:00:00"
+  │   │   └── match_name: "PSG vs OM"
+  │   └── PSG vs LILLE/     (Document)
+  │
+  └── detections/           (Collection)
+      ├── 2025-01-10T10:00:00_PSG_vs_OM/  (Document)
+      │   ├── match: "PSG vs OM"
+      │   ├── nb_places: 3
+      │   ├── date: "2025-01-10T10:00:00"
+      │   └── date_formatee: "10 janvier 2025 à 10:00:00"
+      └── ...
+```
+
+### 🔄 Migration des Données Existantes
+
+Si vous avez déjà des données dans `matches.json`, `status.json`, etc. :
+
+1. **Au premier démarrage avec Firebase** : Le bot chargera d'abord depuis Firestore
+2. **Si Firestore est vide** : Il utilisera les fichiers JSON locaux
+3. **Les nouvelles données** seront automatiquement sauvegardées dans Firestore ET dans les fichiers JSON locaux (double sécurité)
+
+### 💰 Coûts Firebase
+
+Firestore a un **plan gratuit généreux** :
+- **50 000 lectures/jour** (gratuit)
+- **20 000 écritures/jour** (gratuit)
+- **20 000 suppressions/jour** (gratuit)
+- **1 Go de stockage** (gratuit)
+
+Pour un bot de surveillance, ces limites sont largement suffisantes.
+
+### ⚠️ Points Importants
+
+- **Sécurité** : Le fichier JSON de credentials ne doit **JAMAIS** être commité sur GitHub
+- **Backup** : Le bot sauvegarde aussi dans les fichiers JSON locaux en parallèle (double sécurité)
+- **Performance** : Firestore est très rapide et accessible depuis n'importe où
+- **Compatibilité** : Le système fonctionne avec ou sans Firebase (fallback automatique)
+
+### 🐛 Dépannage
+
+**Problème** : `FIREBASE_PROJECT_ID non défini`
+- **Solution** : Vérifiez que la variable d'environnement est bien définie dans Dokploy
+
+**Problème** : `Erreur parsing FIREBASE_CREDENTIALS`
+- **Solution** : Vérifiez que le JSON est valide et copié en entier (sans retours à la ligne supplémentaires)
+
+**Problème** : `Erreur initialisation Firebase`
+- **Solution** : Vérifiez les logs pour voir l'erreur exacte. Vérifiez que le Project ID correspond bien au `project_id` dans le JSON des credentials.
+
+**Problème** : Les données ne se chargent pas depuis Firestore
+- **Solution** : Vérifiez que Firestore est bien activé dans la console Firebase et que les règles de sécurité permettent la lecture.
+
+---
+
 ## 🎉 Félicitations !
 
 Si tous les éléments de la checklist sont cochés, votre bot est opérationnel !
@@ -707,7 +928,9 @@ Si tous les éléments de la checklist sont cochés, votre bot est opérationnel
 - Ajouter/supprimer des matchs via l'interface admin
 - Consulter les analytics pour suivre l'utilisation
 - Personnaliser les messages Telegram si besoin
+- **Configurer Firebase pour persister vos données** (recommandé)
 
 **Bonne chance avec votre bot PSG PMR ! 🚀**
+
 
 

@@ -909,6 +909,10 @@
         async function addMatch() {
             const name = document.getElementById('match-name').value.trim();
             const url = document.getElementById('match-url').value.trim();
+            const competition = document.getElementById('match-competition').value;
+            const date = document.getElementById('match-date').value;
+            const time = document.getElementById('match-time').value;
+            const lieu = document.getElementById('match-lieu').value.trim();
             
             // Validation des champs
             if (!name || !url) {
@@ -946,7 +950,14 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ nom: name, url: url })
+                    body: JSON.stringify({ 
+                        nom: name, 
+                        url: url,
+                        competition: competition || 'Ligue 1',
+                        date: date || null,
+                        time: time || '21:00',
+                        lieu: lieu || 'Parc des Princes'
+                    })
                 });
                 
                 if (response.ok) {
@@ -954,9 +965,13 @@
                     addLog('success', `Match "${name}" ajouté avec succès !`);
                     closeAddMatchModal();
                     loadData(); // Recharger les données
-                    // Réinitialiser les champs
+                    // Réinitialiser tous les champs
                     document.getElementById('match-name').value = '';
                     document.getElementById('match-url').value = '';
+                    document.getElementById('match-competition').value = 'Ligue 1';
+                    document.getElementById('match-date').value = '';
+                    document.getElementById('match-time').value = '21:00';
+                    document.getElementById('match-lieu').value = 'Parc des Princes';
                 } else {
                     const errorData = await response.json();
                     addLog('error', `Erreur: ${errorData.error || 'Erreur lors de l\'ajout'}`);

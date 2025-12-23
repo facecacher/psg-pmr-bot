@@ -12,6 +12,15 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import collections
 
+# Import Firebase Admin (optionnel - seulement si configuré)
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+    FIREBASE_AVAILABLE = True
+except ImportError:
+    FIREBASE_AVAILABLE = False
+    log("⚠️ firebase-admin non installé. Firestore désactivé.", 'warning')
+
 # ====================
 # SYSTÈME DE LOGS POUR L'ADMIN
 # ====================
@@ -44,6 +53,210 @@ except:
         pass  # Si la locale n'est pas disponible, on utilisera une fonction de remplacement
 
 # ====================
+# CONFIGURATION FIREBASE/FIRESTORE
+# ====================
+FIREBASE_INITIALIZED = False
+db = None  # Instance Firestore
+
+def init_firebase():
+    """Initialise Firebase Admin avec les credentials depuis les variables d'environnement"""
+    global FIREBASE_INITIALIZED, db
+    
+    if not FIREBASE_AVAILABLE:
+        log("⚠️ Firebase Admin non disponible. Utilisation des fichiers JSON locaux uniquement.", 'warning')
+        return False
+    
+    if FIREBASE_INITIALIZED:
+        return True
+    
+    try:
+        project_id = os.environ.get('FIREBASE_PROJECT_ID')
+        credentials_str = os.environ.get('FIREBASE_CREDENTIALS')
+        credentials_path = os.environ.get('FIREBASE_CREDENTIALS_PATH')
+        
+        if not project_id:
+            log("⚠️ FIREBASE_PROJECT_ID non défini. Firestore désactivé.", 'warning')
+            return False
+        
+        # Essayer de charger les credentials depuis une variable d'environnement (JSON stringifié)
+        cred = None
+        if credentials_str:
+            try:
+                import json as json_module
+                cred_dict = json_module.loads(credentials_str)
+                cred = credentials.Certificate(cred_dict)
+                log("✅ Credentials Firebase chargés depuis FIREBASE_CREDENTIALS", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur parsing FIREBASE_CREDENTIALS: {e}", 'warning')
+        
+        # Sinon, essayer depuis un fichier
+        elif credentials_path and os.path.exists(credentials_path):
+            try:
+                cred = credentials.Certificate(credentials_path)
+                log(f"✅ Credentials Firebase chargés depuis {credentials_path}", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur chargement credentials depuis fichier: {e}", 'warning')
+        
+        # Sinon, essayer le fichier par défaut
+        elif os.path.exists('firebase-credentials.json'):
+            try:
+                cred = credentials.Certificate('firebase-credentials.json')
+                log("✅ Credentials Firebase chargés depuis firebase-credentials.json", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur chargement firebase-credentials.json: {e}", 'warning')
+        
+        if not cred:
+            log("⚠️ Aucun credential Firebase trouvé. Firestore désactivé.", 'warning')
+            return False
+        
+        # Initialiser Firebase Admin
+        firebase_admin.initialize_app(cred, {
+            'projectId': project_id
+        })
+        
+        # Obtenir l'instance Firestore
+        db = firestore.client()
+        FIREBASE_INITIALIZED = True
+        log(f"✅ Firebase initialisé avec succès (Project ID: {project_id})", 'success')
+        return True
+        
+    except Exception as e:
+        log(f"❌ Erreur initialisation Firebase: {e}", 'error')
+        import traceback
+        traceback.print_exc()
+        return False
+
+def save_to_firestore(collection, doc_id, data):
+    """Sauvegarde des données dans Firestore"""
+    global db
+    if not FIREBASE_INITIALIZED or not db:
+        return False
+    
+    try:
+        doc_ref = db.collection(collection).document(doc_id)
+        # Ajouter un timestamp serveur
+        data['_server_timestamp'] = firestore.SERVER_TIMESTAMP
+        doc_ref.set(data, merge=True)
+        return True
+    except Exception as e:
+        log(f"⚠️ Erreur sauvegarde Firestore ({collection}/{doc_id}): {e}", 'warning')
+        return False
+
+def load_from_firestore(collection, doc_id):
+    """Charge des données depuis Firestore"""
+    global db
+    if not FIREBASE_INITIALIZED or not db:
+        return None
+    
+    try:
+        doc_ref = db.collection(collection).document(doc_id)
+        doc = doc_ref.get()
+        if doc.exists:
+            data = doc.to_dict()
+            # Retirer le timestamp serveur si présent
+            data.pop('_server_timestamp', None)
+            return data
+        return None
+    except Exception as e:
+        log(f"⚠️ Erreur chargement Firestore ({collection}/{doc_id}): {e}", 'warning')
+        return None
+
+def delete_from_firestore(collection, doc_id):
+    """Supprime un document de Firestore"""
+    global db
+    if not FIREBASE_INITIALIZED or not db:
+        return False
+    
+    try:
+        doc_ref = db.collection(collection).document(doc_id)
+        doc_ref.delete()
+        return True
+    except Exception as e:
+        log(f"⚠️ Erreur suppression Firestore ({collection}/{doc_id}): {e}", 'warning')
+        return False
+
+def get_all_from_firestore(collection):
+    """Récupère tous les documents d'une collection Firestore"""
+    global db
+    if not FIREBASE_INITIALIZED or not db:
+        return []
+    
+    try:
+        docs = db.collection(collection).stream()
+        result = []
+        for doc in docs:
+            data = doc.to_dict()
+            data.pop('_server_timestamp', None)
+            result.append(data)
+        return result
+    except Exception as e:
+        log(f"⚠️ Erreur récupération collection Firestore ({collection}): {e}", 'warning')
+        return []
+
+def load_all_from_firestore():
+    """Charge toutes les données depuis Firestore au démarrage"""
+    if not FIREBASE_INITIALIZED:
+        return False
+    
+    try:
+        log("📥 Chargement des données depuis Firestore...", 'info')
+        
+        # Charger les matchs
+        matches = get_all_from_firestore('matches')
+        if matches:
+            # Convertir en format attendu (les documents Firestore ont déjà la structure)
+            # Sauvegarder dans matches.json pour compatibilité
+            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                json.dump(matches, f, ensure_ascii=False, indent=2)
+            log(f"✅ {len(matches)} match(s) chargé(s) depuis Firestore", 'success')
+        
+        # Charger le status
+        status = load_from_firestore('status', 'current')
+        if status:
+            with open('status.json', 'w', encoding='utf-8') as f:
+                json.dump(status, f, ensure_ascii=False, indent=2)
+            log("✅ Status chargé depuis Firestore", 'success')
+        
+        # Charger les analytics
+        analytics = load_from_firestore('analytics', 'current')
+        if analytics:
+            with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(analytics, f, ensure_ascii=False, indent=2)
+            log("✅ Analytics chargé(s) depuis Firestore", 'success')
+        
+        # Charger le cache Groq
+        groq_cache_docs = get_all_from_firestore('groq_cache')
+        if groq_cache_docs:
+            groq_cache = {}
+            for doc in groq_cache_docs:
+                match_name = doc.get('match_name', '')
+                if match_name:
+                    groq_cache[match_name] = doc
+            with open('groq_cache.json', 'w', encoding='utf-8') as f:
+                json.dump(groq_cache, f, ensure_ascii=False, indent=2)
+            log(f"✅ Cache Groq chargé depuis Firestore ({len(groq_cache)} entrée(s))", 'success')
+        
+        # Charger l'historique des détections
+        detections = get_all_from_firestore('detections')
+        if detections:
+            # Trier par date (plus récent en premier)
+            detections.sort(key=lambda x: x.get('date', ''), reverse=True)
+            # Garder seulement les 50 dernières
+            detections = detections[:50]
+            with open(DETECTIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
+                json.dump(detections, f, ensure_ascii=False, indent=2)
+            log(f"✅ {len(detections)} détection(s) chargée(s) depuis Firestore", 'success')
+        
+        log("✅ Toutes les données ont été chargées depuis Firestore", 'success')
+        return True
+        
+    except Exception as e:
+        log(f"⚠️ Erreur chargement depuis Firestore: {e}", 'warning')
+        import traceback
+        traceback.print_exc()
+        return False
+
+# ====================
 # HISTORIQUE DES DÉTECTIONS PMR
 # ====================
 DETECTIONS_HISTORY_FILE = 'detections_history.json'
@@ -51,6 +264,15 @@ DETECTIONS_HISTORY_FILE = 'detections_history.json'
 def charger_historique_detections():
     """Charge l'historique des détections PMR"""
     try:
+        # Essayer Firestore d'abord
+        if FIREBASE_INITIALIZED:
+            detections = get_all_from_firestore('detections')
+            if detections:
+                # Trier par date (plus récent en premier)
+                detections.sort(key=lambda x: x.get('date', ''), reverse=True)
+                return detections[:50]  # Garder seulement les 50 dernières
+        
+        # Fallback sur fichier local
         if os.path.exists(DETECTIONS_HISTORY_FILE):
             with open(DETECTIONS_HISTORY_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
@@ -73,34 +295,71 @@ def sauvegarder_detection(match_nom, nb_places):
         if len(historique) > 50:
             historique = historique[-50:]
         
+        # Sauvegarder dans Firestore
+        if FIREBASE_INITIALIZED:
+            # Supprimer les anciennes détections au-delà de 50
+            all_detections = get_all_from_firestore('detections')
+            all_detections.sort(key=lambda x: x.get('date', ''), reverse=True)
+            # Supprimer les anciennes
+            for old_detection in all_detections[50:]:
+                detection_id = old_detection.get('date', '') + '_' + old_detection.get('match', '').replace(' ', '_')
+                delete_from_firestore('detections', detection_id)
+            # Ajouter la nouvelle
+            detection_id = detection['date'] + '_' + detection['match'].replace(' ', '_')
+            save_to_firestore('detections', detection_id, detection)
+        
+        # Sauvegarder aussi dans le fichier local (backup)
         with open(DETECTIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
             json.dump(historique, f, ensure_ascii=False, indent=2)
     except Exception as e:
         log(f"⚠️ Erreur sauvegarde détection: {e}", 'warning')
 
-# Charger les matchs depuis le fichier JSON
+# Charger les matchs depuis le fichier JSON ou Firestore
 def charger_matchs():
     try:
-        with open('matches.json', 'r', encoding='utf-8') as f:
-            matches = json.load(f)
-        log(f"📂 matches.json chargé: {len(matches)} match(s)", 'info')
-        return matches
-    except FileNotFoundError:
-        # Matchs par défaut si le fichier n'existe pas
-        matchs_default = [
-    {
-        "nom": "PSG vs PARIS FC",
-        "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-sg-vs-paris-fc-1"
-    },
-    {
-        "nom": "PSG vs RENNE",
-        "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-vs-rennes-5"
-            }
-        ]
-        with open('matches.json', 'w', encoding='utf-8') as f:
-            json.dump(matchs_default, f, ensure_ascii=False, indent=2)
-        log(f"📂 matches.json créé avec {len(matchs_default)} match(s) par défaut", 'info')
-        return matchs_default
+        # Essayer Firestore d'abord
+        if FIREBASE_INITIALIZED:
+            matches = get_all_from_firestore('matches')
+            if matches:
+                # Sauvegarder dans le fichier local pour compatibilité
+                with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(matches, f, ensure_ascii=False, indent=2)
+                log(f"📂 {len(matches)} match(s) chargé(s) depuis Firestore", 'info')
+                return matches
+        
+        # Fallback sur fichier local
+        try:
+            with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
+                matches = json.load(f)
+            log(f"📂 matches.json chargé: {len(matches)} match(s)", 'info')
+            return matches
+        except FileNotFoundError:
+            # Matchs par défaut si le fichier n'existe pas
+            matchs_default = [
+        {
+            "nom": "PSG vs PARIS FC",
+            "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-sg-vs-paris-fc-1",
+            "competition": "Ligue 1",
+            "date": None,
+            "time": "21:00",
+            "lieu": "Parc des Princes"
+        },
+        {
+            "nom": "PSG vs RENNE",
+            "url": "https://billetterie.psg.fr/fr/catalogue/match-foot-masculin-paris-vs-rennes-5",
+            "competition": "Ligue 1",
+            "date": None,
+            "time": "21:00",
+            "lieu": "Parc des Princes"
+                }
+            ]
+            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                json.dump(matchs_default, f, ensure_ascii=False, indent=2)
+            log(f"📂 matches.json créé avec {len(matchs_default)} match(s) par défaut", 'info')
+            return matchs_default
+    except Exception as e:
+        log(f"⚠️ Erreur chargement matchs: {e}", 'warning')
+        return []
 
 # ====================
 # FONCTIONS HELPER POUR GROQ
@@ -397,21 +656,40 @@ GROQ_CACHE_FILE = 'groq_cache.json'
 def get_cached_groq_data(match_name):
     """Récupère les données en cache si elles existent et sont récentes (< 24h)"""
     try:
-        with open(GROQ_CACHE_FILE, 'r', encoding='utf-8') as f:
-            cache = json.load(f)
+        # Essayer Firestore d'abord
+        if FIREBASE_INITIALIZED:
+            cached_data = load_from_firestore('groq_cache', match_name)
+            if cached_data:
+                last_updated_str = cached_data.get('last_updated', '2000-01-01T00:00:00')
+                try:
+                    last_updated = datetime.fromisoformat(last_updated_str)
+                    hours_diff = (datetime.now() - last_updated).total_seconds() / 3600
+                    
+                    if hours_diff < 24:
+                        log(f"✅ Données Groq en cache pour {match_name} depuis Firestore ({hours_diff:.1f}h)", 'info')
+                        return cached_data
+                    else:
+                        log(f"⏰ Cache expiré pour {match_name} ({hours_diff:.1f}h)", 'info')
+                except Exception:
+                    pass
         
-        if match_name in cache:
-            cached_data = cache[match_name]
-            last_updated = datetime.fromisoformat(cached_data.get('last_updated', '2000-01-01'))
-            hours_diff = (datetime.now() - last_updated).total_seconds() / 3600
+        # Fallback sur fichier local
+        try:
+            with open(GROQ_CACHE_FILE, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
             
-            if hours_diff < 24:
-                log(f"✅ Données Groq en cache pour {match_name} ({hours_diff:.1f}h)", 'info')
-                return cached_data
-            else:
-                log(f"⏰ Cache expiré pour {match_name} ({hours_diff:.1f}h)", 'info')
-    except FileNotFoundError:
-        pass
+            if match_name in cache:
+                cached_data = cache[match_name]
+                last_updated = datetime.fromisoformat(cached_data.get('last_updated', '2000-01-01'))
+                hours_diff = (datetime.now() - last_updated).total_seconds() / 3600
+                
+                if hours_diff < 24:
+                    log(f"✅ Données Groq en cache pour {match_name} ({hours_diff:.1f}h)", 'info')
+                    return cached_data
+                else:
+                    log(f"⏰ Cache expiré pour {match_name} ({hours_diff:.1f}h)", 'info')
+        except FileNotFoundError:
+            pass
     except Exception as e:
         log(f"⚠️ Erreur lecture cache: {e}", 'warning')
     
@@ -420,13 +698,20 @@ def get_cached_groq_data(match_name):
 def save_groq_cache(match_name, data):
     """Sauvegarde les données dans le cache"""
     try:
+        data['last_updated'] = datetime.now().isoformat()
+        data['match_name'] = match_name
+        
+        # Sauvegarder dans Firestore
+        if FIREBASE_INITIALIZED:
+            save_to_firestore('groq_cache', match_name, data)
+        
+        # Sauvegarder aussi dans le fichier local (backup)
         cache = {}
         if os.path.exists(GROQ_CACHE_FILE):
             with open(GROQ_CACHE_FILE, 'r', encoding='utf-8') as f:
                 cache = json.load(f)
         
         cache[match_name] = data
-        cache[match_name]['last_updated'] = datetime.now().isoformat()
         
         with open(GROQ_CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
@@ -434,6 +719,13 @@ def save_groq_cache(match_name, data):
         log(f"💾 Cache Groq sauvegardé pour {match_name}", 'info')
     except Exception as e:
         log(f"⚠️ Erreur sauvegarde cache: {e}", 'warning')
+
+# ✅ INITIALISATION FIREBASE AU DÉMARRAGE
+if init_firebase():
+    # Charger toutes les données depuis Firestore
+    load_all_from_firestore()
+else:
+    log("ℹ️ Firestore non configuré, utilisation des fichiers JSON locaux", 'info')
 
 # ✅ LISTE DES MATCHS À SURVEILLER (chargée dynamiquement)
 MATCHS = charger_matchs()
@@ -474,7 +766,7 @@ def envoyer_message(msg):
         print("Erreur Telegram:", e)
 
 def sauvegarder_status():
-    """Sauvegarde l'état du bot dans status.json pour le site web"""
+    """Sauvegarde l'état du bot dans status.json pour le site web ET dans Firestore"""
     status = {
         "bot_actif": True,
         "derniere_mise_a_jour": formater_date_francaise(datetime.now()),
@@ -534,6 +826,11 @@ def sauvegarder_status():
         "matchs_surveilles": nb_matchs
     }
     
+    # Sauvegarder dans Firestore
+    if FIREBASE_INITIALIZED:
+        save_to_firestore('status', 'current', status)
+    
+    # Sauvegarder aussi dans le fichier local (backup)
     import os
     status_path = 'status.json'
     with open(status_path, 'w', encoding='utf-8') as f:
@@ -735,7 +1032,13 @@ def api_add_match():
         }
         matches.append(new_match)
         
-        # Sauvegarder
+        # Sauvegarder dans Firestore
+        if FIREBASE_INITIALIZED:
+            # Utiliser le nom du match comme ID (sanitize pour Firestore)
+            match_id = nom.replace(' ', '_').replace('/', '_')
+            save_to_firestore('matches', match_id, new_match)
+        
+        # Sauvegarder aussi dans le fichier local (backup)
         with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
             json.dump(matches, f, ensure_ascii=False, indent=2)
         
@@ -784,7 +1087,12 @@ def api_delete_match(index):
         if 0 <= index < len(matches):
             deleted = matches.pop(index)
             
-            # Sauvegarder
+            # Supprimer de Firestore
+            if FIREBASE_INITIALIZED:
+                match_id = deleted.get('nom', '').replace(' ', '_').replace('/', '_')
+                delete_from_firestore('matches', match_id)
+            
+            # Sauvegarder aussi dans le fichier local (backup)
             with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
                 json.dump(matches, f, ensure_ascii=False, indent=2)
             
@@ -847,8 +1155,18 @@ def api_force_check(index):
 def api_get_analytics():
     """Retourne les statistiques du site web"""
     try:
-        with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
-            analytics = json.load(f)
+        # Essayer Firestore d'abord
+        analytics = None
+        if FIREBASE_INITIALIZED:
+            analytics = load_from_firestore('analytics', 'current')
+        
+        # Fallback sur fichier local
+        if not analytics:
+            try:
+                with open(ANALYTICS_FILE, 'r', encoding='utf-8') as f:
+                    analytics = json.load(f)
+            except FileNotFoundError:
+                analytics = None
         
         # S'assurer que toutes les propriétés existent
         default_values = {
@@ -892,7 +1210,11 @@ def api_get_analytics():
                     analytics["visiteurs_aujourdhui"] = 0
                     analytics["derniere_date"] = date_actuelle
                     
-                    # Sauvegarder la mise à jour
+                    # Sauvegarder dans Firestore
+                    if FIREBASE_INITIALIZED:
+                        save_to_firestore('analytics', 'current', analytics)
+                    
+                    # Sauvegarder aussi dans le fichier local (backup)
                     with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
                         json.dump(analytics, f, ensure_ascii=False, indent=2)
             except Exception as e:
@@ -1014,7 +1336,11 @@ def api_track_visitor():
         if analytics["visiteurs_en_ligne"] > analytics.get("pic_connexions", 0):
             analytics["pic_connexions"] = analytics["visiteurs_en_ligne"]
         
-        # Sauvegarder
+        # Sauvegarder dans Firestore
+        if FIREBASE_INITIALIZED:
+            save_to_firestore('analytics', 'current', analytics)
+        
+        # Sauvegarder aussi dans le fichier local (backup)
         with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
             json.dump(analytics, f, ensure_ascii=False, indent=2)
         
@@ -1068,7 +1394,11 @@ def api_track_telegram_click():
         # Incrémenter
         analytics["clics_telegram"] = analytics.get("clics_telegram", 0) + 1
         
-        # Sauvegarder
+        # Sauvegarder dans Firestore
+        if FIREBASE_INITIALIZED:
+            save_to_firestore('analytics', 'current', analytics)
+        
+        # Sauvegarder aussi dans le fichier local (backup)
         with open(ANALYTICS_FILE, 'w', encoding='utf-8') as f:
             json.dump(analytics, f, ensure_ascii=False, indent=2)
         

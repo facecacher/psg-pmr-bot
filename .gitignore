@@ -3,6 +3,7 @@ matches.json
 analytics.json
 groq_cache.json
 detections_history.json
+firebase-credentials.json
 __pycache__/
 *.pyc
 *.pyo
