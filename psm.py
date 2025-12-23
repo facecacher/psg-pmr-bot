@@ -496,29 +496,39 @@ def sauvegarder_detection(match_nom, nb_places):
 def charger_matchs():
     """Charge les matchs depuis SQLite (fichier local en backup)"""
     try:
-        # PRIORITÉ 1 : SQLite
+        # PRIORITÉ 1 : SQLite (source de vérité)
         matches = load_matches_from_db()
         if matches:
             # Sauvegarder dans le fichier local pour backup
-            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                json.dump(matches, f, ensure_ascii=False, indent=2)
+            try:
+                with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(matches, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                log(f"⚠️ Erreur sauvegarde backup matches.json: {e}", 'warning')
             log(f"📂 {len(matches)} match(s) chargé(s) depuis SQLite", 'info')
             return matches
         
-        # PRIORITÉ 2 : Fichier local (fallback)
-        if os.path.exists(MATCHES_FILE):
+        # PRIORITÉ 2 : Fichier local (fallback UNIQUEMENT si SQLite n'existe pas encore)
+        # Si SQLite existe mais est vide, on ne restaure PAS depuis matches.json
+        # car cela pourrait restaurer des matchs supprimés intentionnellement
+        if not os.path.exists(DB_FILE) and os.path.exists(MATCHES_FILE):
             try:
                 with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
                     matches = json.load(f)
-                log(f"📂 matches.json chargé: {len(matches)} match(s)", 'info')
-                # Migrer vers SQLite
+                log(f"📂 matches.json chargé: {len(matches)} match(s) (première migration)", 'info')
+                # Migrer vers SQLite (première fois uniquement)
                 for match in matches:
                     save_match_to_db(match)
+                log(f"✅ {len(matches)} match(s) migré(s) vers SQLite", 'success')
                 return matches
             except Exception as e:
                 log(f"⚠️ Erreur lecture matches.json: {e}", 'warning')
+        elif os.path.exists(DB_FILE):
+            # SQLite existe mais est vide = pas de matchs (suppression intentionnelle)
+            log(f"ℹ️ Base SQLite vide - aucun match à charger", 'info')
+            return []
         
-        # PRIORITÉ 3 : Matchs par défaut si rien n'existe
+        # PRIORITÉ 3 : Matchs par défaut si rien n'existe (première installation)
         matchs_default = [
     {
         "nom": "PSG vs PARIS FC",
@@ -537,15 +547,20 @@ def charger_matchs():
                 "lieu": "Parc des Princes"
             }
         ]
-        # Sauvegarder dans SQLite et fichier local
+        # Sauvegarder dans SQLite et fichier local (première installation uniquement)
         for match in matchs_default:
             save_match_to_db(match)
-        with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(matchs_default, f, ensure_ascii=False, indent=2)
+        try:
+            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                json.dump(matchs_default, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            log(f"⚠️ Erreur sauvegarde matches.json: {e}", 'warning')
         log(f"📂 matches.json créé avec {len(matchs_default)} match(s) par défaut", 'info')
         return matchs_default
     except Exception as e:
         log(f"⚠️ Erreur chargement matchs: {e}", 'warning')
+        import traceback
+        traceback.print_exc()
         return []
 
 # ====================
@@ -1261,18 +1276,25 @@ def api_get_match_details(match_name):
 def api_delete_match(index):
     """Supprime un match par son index"""
     try:
-        with open(MATCHES_FILE, 'r', encoding='utf-8') as f:
-            matches = json.load(f)
+        # PRIORITÉ : Lire depuis SQLite (source de vérité)
+        matches = charger_matchs()
         
         if 0 <= index < len(matches):
             deleted = matches.pop(index)
             
-            # Supprimer de SQLite
-            delete_match_from_db(deleted.get('nom', ''))
+            # Supprimer de SQLite (source de vérité)
+            if delete_match_from_db(deleted.get('nom', '')):
+                log(f"✅ Match supprimé de SQLite: {deleted.get('nom')}", 'success')
+            else:
+                log(f"⚠️ Match non trouvé dans SQLite (peut-être déjà supprimé): {deleted.get('nom')}", 'warning')
             
             # Sauvegarder aussi dans le fichier local (backup)
-            with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
-                json.dump(matches, f, ensure_ascii=False, indent=2)
+            try:
+                with open(MATCHES_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(matches, f, ensure_ascii=False, indent=2)
+                log(f"💾 matches.json mis à jour avec succès", 'success')
+            except Exception as e:
+                log(f"⚠️ Erreur sauvegarde matches.json: {e}", 'warning')
             
             # Mettre à jour status.json immédiatement
             global MATCHS
@@ -1281,7 +1303,6 @@ def api_delete_match(index):
             
             log(f"🗑️ Match supprimé: {deleted.get('nom')} ({deleted.get('url')})", 'error')
             log(f"📊 Matchs restants: {len(matches)}", 'info')
-            log(f"💾 matches.json mis à jour avec succès", 'success')
             log(f"💾 status.json mis à jour - le site public reflète le changement", 'success')
             log(f"⏸️ Le match ne sera plus surveillé au prochain cycle", 'info')
             
@@ -1289,6 +1310,9 @@ def api_delete_match(index):
         else:
             return jsonify({"error": "Index invalide"}), 404
     except Exception as e:
+        log(f"❌ Erreur suppression match: {e}", 'error')
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/matches/<int:index>/check', methods=['POST'])
