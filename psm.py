@@ -250,6 +250,8 @@ def get_all_from_firestore(collection):
 
 def load_all_from_firestore():
     """Charge toutes les données depuis Firestore au démarrage (non-bloquant avec timeout global)"""
+    global FIREBASE_INITIALIZED
+    
     if not FIREBASE_INITIALIZED:
         return False
     
@@ -342,7 +344,6 @@ def load_all_from_firestore():
             return result
     except FutureTimeoutError:
         log("⏱️ Timeout global (20s) lors du chargement Firestore - Désactivation de Firestore pour cette session", 'error')
-        global FIREBASE_INITIALIZED
         FIREBASE_INITIALIZED = False  # Désactiver Firestore pour éviter d'autres blocages
         log("ℹ️ Le bot continuera avec les fichiers JSON locaux uniquement", 'info')
         return False
