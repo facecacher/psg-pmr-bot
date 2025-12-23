@@ -570,11 +570,18 @@
                 
                 // 1. Mettre à jour l'analyse IA
                 if (data.analysis) {
-                    // Mettre à jour le score de hype principal (le gros pourcentage)
+                    // Vérifier et afficher le score hype
                     const hypeLevel = document.querySelector('.text-7xl.gradient-text');
                     if (hypeLevel) {
-                        hypeLevel.textContent = `${data.analysis.hype_score}%`;
-                        console.log('✅ Score hype mis à jour:', data.analysis.hype_score);
+                        if (data.analysis.hype_score !== undefined && data.analysis.hype_score !== null) {
+                            hypeLevel.textContent = `${data.analysis.hype_score}%`;
+                            hypeLevel.classList.remove('text-gray-500');
+                            console.log('✅ Score hype mis à jour:', data.analysis.hype_score);
+                        } else {
+                            hypeLevel.textContent = 'N/A';
+                            hypeLevel.classList.add('text-gray-500');
+                            console.warn('⚠️ Score hype non disponible');
+                        }
                     } else {
                         console.warn('⚠️ Élément .text-7xl.gradient-text non trouvé');
                     }
@@ -588,10 +595,17 @@
                         const hypeLabelCard = statCards[0];
                         const hypeLabel = hypeLabelCard.querySelector('.text-2xl.font-bold');
                         if (hypeLabel) {
-                            const score = data.analysis.hype_score;
-                            const label = score >= 90 ? 'Très élevé' : score >= 75 ? 'Élevé' : score >= 60 ? 'Moyen' : 'Faible';
-                            hypeLabel.textContent = label;
-                            console.log('✅ Label hype mis à jour:', label);
+                            if (data.analysis.hype_score !== undefined && data.analysis.hype_score !== null) {
+                                const score = data.analysis.hype_score;
+                                const label = score >= 90 ? 'Très élevé' : score >= 75 ? 'Élevé' : score >= 60 ? 'Moyen' : 'Faible';
+                                hypeLabel.textContent = label;
+                                hypeLabel.classList.remove('text-gray-500');
+                                console.log('✅ Label hype mis à jour:', label);
+                            } else {
+                                hypeLabel.textContent = 'Non disponible';
+                                hypeLabel.classList.add('text-gray-500');
+                                console.warn('⚠️ Score hype non disponible pour le label');
+                            }
                         } else {
                             console.warn('⚠️ Élément .text-2xl.font-bold non trouvé dans statCards[0]');
                         }
@@ -602,8 +616,15 @@
                         const affluenceCard = statCards[1];
                         const affluenceEl = affluenceCard.querySelector('.text-2xl.font-bold');
                         if (affluenceEl) {
-                            affluenceEl.textContent = `${data.analysis.affluence_prevue}%`;
-                            console.log('✅ Affluence mise à jour:', data.analysis.affluence_prevue);
+                            if (data.analysis.affluence_prevue !== undefined && data.analysis.affluence_prevue !== null) {
+                                affluenceEl.textContent = `${data.analysis.affluence_prevue}%`;
+                                affluenceEl.classList.remove('text-gray-500');
+                                console.log('✅ Affluence mise à jour:', data.analysis.affluence_prevue);
+                            } else {
+                                affluenceEl.textContent = 'N/A';
+                                affluenceEl.classList.add('text-gray-500');
+                                console.warn('⚠️ Affluence non disponible');
+                            }
                         } else {
                             console.warn('⚠️ Élément .text-2xl.font-bold non trouvé dans statCards[1]');
                         }
@@ -611,26 +632,48 @@
                         console.warn('⚠️ Pas assez de cartes trouvées (besoin de 2, trouvé:', statCards.length);
                     }
                     
+                    // Analyse textuelle
                     const analyseText = document.querySelector('.text-gray-300.leading-relaxed');
                     if (analyseText) {
-                        let analyseHTML = data.analysis.analyse;
-                        if (data.analysis.probabilite_pmr !== undefined) {
-                            analyseHTML = analyseHTML.replace(
-                                new RegExp(`(${data.analysis.probabilite_pmr}%)`, 'g'),
-                                `<span class="text-white font-semibold">${data.analysis.probabilite_pmr}%</span>`
-                            );
+                        if (data.analysis.analyse && data.analysis.analyse.trim() !== '') {
+                            let analyseHTML = data.analysis.analyse;
+                            if (data.analysis.probabilite_pmr !== undefined && data.analysis.probabilite_pmr !== null) {
+                                analyseHTML = analyseHTML.replace(
+                                    new RegExp(`(${data.analysis.probabilite_pmr}%)`, 'g'),
+                                    `<span class="text-white font-semibold">${data.analysis.probabilite_pmr}%</span>`
+                                );
+                            }
+                            analyseText.innerHTML = analyseHTML;
+                            analyseText.classList.remove('text-gray-500', 'italic');
+                            console.log('✅ Analyse textuelle mise à jour');
+                        } else {
+                            analyseText.innerHTML = '<span class="text-gray-500 italic">⚠️ Analyse non disponible - Groq n\'a pas pu générer cette information</span>';
+                            analyseText.classList.add('text-gray-500', 'italic');
+                            console.warn('⚠️ Analyse textuelle non disponible');
                         }
-                        analyseText.innerHTML = analyseHTML;
+                    }
+                } else {
+                    console.warn('⚠️ Pas de données d\'analyse disponibles');
+                    const analyseText = document.querySelector('.text-gray-300.leading-relaxed');
+                    if (analyseText) {
+                        analyseText.innerHTML = '<span class="text-gray-500 italic">⚠️ Analyse non disponible - Groq n\'a pas pu générer cette information</span>';
+                        analyseText.classList.add('text-gray-500', 'italic');
                     }
                 }
                 
                 // 2. Mettre à jour la comparaison (avec vrais noms de matchs)
-                if (data.comparison) {
+                if (data.comparison && Object.keys(data.comparison).length > 0) {
                     console.log('📈 Mise à jour comparaison:', data.comparison);
                     updateComparison(data.comparison, match.nom);
                     console.log('✅ Comparaison mise à jour');
                 } else {
                     console.warn('⚠️ Pas de données de comparaison');
+                    // Afficher un message dans le conteneur de comparaison
+                    const comparisonContainer = document.querySelector('.comparison-container') || 
+                                               document.querySelector('.glass.rounded-3xl.p-8 .space-y-4');
+                    if (comparisonContainer) {
+                        comparisonContainer.innerHTML = '<div class="text-gray-500 italic text-center py-4">⚠️ Comparaison non disponible - Groq n\'a pas pu générer cette information</div>';
+                    }
                 }
                 
                 // 3. Mettre à jour la météo
@@ -643,9 +686,20 @@
                 }
                 
                 // 4. Mettre à jour les compositions
-                if (data.lineups) {
+                if (data.lineups && data.lineups.home && data.lineups.away) {
                     const teams = match.nom.split(' vs ');
                     updateLineups(data.lineups, teams[0], teams[1] || 'Adversaire');
+                } else {
+                    console.warn('⚠️ Pas de données de compositions disponibles');
+                    // Afficher un message dans les conteneurs de compositions
+                    const psgContainer = document.getElementById('lineup-psg');
+                    const awayContainer = document.getElementById('lineup-away');
+                    if (psgContainer) {
+                        psgContainer.innerHTML = '<div class="text-gray-500 italic text-center py-4">⚠️ Composition non disponible - Groq n\'a pas pu générer cette information</div>';
+                    }
+                    if (awayContainer) {
+                        awayContainer.innerHTML = '<div class="text-gray-500 italic text-center py-4">⚠️ Composition non disponible - Groq n\'a pas pu générer cette information</div>';
+                    }
                 }
                 
                 // Mettre à jour les informations du match (compétition, type, date, heure)
@@ -808,6 +862,23 @@
         
         // Mettre à jour la météo
         function updateWeather(weather) {
+            if (!weather) {
+                console.warn('⚠️ Pas de données météo disponibles');
+                // Afficher des messages "Non disponible" pour tous les champs
+                const tempEl = document.getElementById('weather-temp');
+                const conditionEl = document.getElementById('weather-condition');
+                const rainEl = document.getElementById('weather-rain');
+                const windEl = document.getElementById('weather-wind');
+                const emojiEl = document.getElementById('weather-emoji');
+                
+                if (tempEl) tempEl.innerHTML = '<span class="text-gray-500 italic">N/A</span>';
+                if (conditionEl) conditionEl.innerHTML = '<span class="text-gray-500 italic">Non disponible</span>';
+                if (rainEl) rainEl.innerHTML = '<span class="text-gray-500 italic">N/A</span>';
+                if (windEl) windEl.innerHTML = '<span class="text-gray-500 italic">N/A</span>';
+                if (emojiEl) emojiEl.textContent = '❓';
+                return;
+            }
+            
             const emojiEl = document.getElementById('weather-emoji');
             const tempEl = document.getElementById('weather-temp');
             const conditionEl = document.getElementById('weather-condition');
@@ -815,36 +886,67 @@
             const windEl = document.getElementById('weather-wind');
             
             if (emojiEl) {
-                emojiEl.textContent = weather.emoji;
-                console.log('✅ Emoji météo mis à jour:', weather.emoji);
+                if (weather.emoji) {
+                    emojiEl.textContent = weather.emoji;
+                    emojiEl.classList.remove('text-gray-500');
+                    console.log('✅ Emoji météo mis à jour:', weather.emoji);
+                } else {
+                    emojiEl.textContent = '❓';
+                    emojiEl.classList.add('text-gray-500');
+                    console.warn('⚠️ Emoji météo non disponible');
+                }
             } else {
                 console.warn('⚠️ Élément weather-emoji non trouvé');
             }
             
             if (tempEl) {
-                tempEl.textContent = `${weather.temperature}°C`;
-                console.log('✅ Température mise à jour:', weather.temperature);
+                if (weather.temperature !== undefined && weather.temperature !== null) {
+                    tempEl.textContent = `${weather.temperature}°C`;
+                    tempEl.classList.remove('text-gray-500', 'italic');
+                    console.log('✅ Température mise à jour:', weather.temperature);
+                } else {
+                    tempEl.innerHTML = '<span class="text-gray-500 italic">N/A</span>';
+                    console.warn('⚠️ Température non disponible');
+                }
             } else {
                 console.warn('⚠️ Élément weather-temp non trouvé');
             }
             
             if (conditionEl) {
-                conditionEl.textContent = weather.condition;
-                console.log('✅ Condition météo mise à jour:', weather.condition);
+                if (weather.condition && weather.condition.trim() !== '') {
+                    conditionEl.textContent = weather.condition;
+                    conditionEl.classList.remove('text-gray-500', 'italic');
+                    console.log('✅ Condition météo mise à jour:', weather.condition);
+                } else {
+                    conditionEl.innerHTML = '<span class="text-gray-500 italic">Non disponible</span>';
+                    console.warn('⚠️ Condition météo non disponible');
+                }
             } else {
                 console.warn('⚠️ Élément weather-condition non trouvé');
             }
             
             if (rainEl) {
-                rainEl.textContent = `${weather.rain_chance}%`;
-                console.log('✅ Pluie mise à jour:', weather.rain_chance);
+                if (weather.rain_chance !== undefined && weather.rain_chance !== null) {
+                    rainEl.textContent = `${weather.rain_chance}%`;
+                    rainEl.classList.remove('text-gray-500', 'italic');
+                    console.log('✅ Pluie mise à jour:', weather.rain_chance);
+                } else {
+                    rainEl.innerHTML = '<span class="text-gray-500 italic">N/A</span>';
+                    console.warn('⚠️ Probabilité de pluie non disponible');
+                }
             } else {
                 console.warn('⚠️ Élément weather-rain non trouvé');
             }
             
             if (windEl) {
-                windEl.textContent = `${weather.wind_speed} km/h`;
-                console.log('✅ Vent mis à jour:', weather.wind_speed);
+                if (weather.wind_speed !== undefined && weather.wind_speed !== null) {
+                    windEl.textContent = `${weather.wind_speed} km/h`;
+                    windEl.classList.remove('text-gray-500', 'italic');
+                    console.log('✅ Vent mis à jour:', weather.wind_speed);
+                } else {
+                    windEl.innerHTML = '<span class="text-gray-500 italic">N/A</span>';
+                    console.warn('⚠️ Vitesse du vent non disponible');
+                }
             } else {
                 console.warn('⚠️ Élément weather-wind non trouvé');
             }
@@ -926,6 +1028,19 @@
         function updateLineups(lineups, homeTeam, awayTeam) {
             console.log('⚽ Mise à jour compositions pour:', homeTeam, 'vs', awayTeam);
             
+            if (!lineups || !lineups.home || !lineups.away) {
+                console.warn('⚠️ Données de compositions incomplètes');
+                const psgContainer = document.getElementById('lineup-psg');
+                const awayContainer = document.getElementById('lineup-away');
+                if (psgContainer) {
+                    psgContainer.innerHTML = '<div class="text-gray-500 italic text-center py-4">⚠️ Composition non disponible</div>';
+                }
+                if (awayContainer) {
+                    awayContainer.innerHTML = '<div class="text-gray-500 italic text-center py-4">⚠️ Composition non disponible</div>';
+                }
+                return;
+            }
+            
             // Mettre à jour le titre de la composition adverse
             const awayTitle = document.getElementById('lineup-away-title');
             if (awayTitle) {
@@ -938,20 +1053,33 @@
             const psgContainer = document.getElementById('lineup-psg');
             
             if (psgContainer && psgLineup) {
-                console.log('✅ Composition PSG trouvée:', psgLineup);
-                const positions = [
-                    { code: 'GK', players: psgLineup.gk },
-                    { code: 'DF', players: psgLineup.df },
-                    { code: 'MF', players: psgLineup.mf },
-                    { code: 'FW', players: psgLineup.fw }
-                ];
+                // Vérifier que toutes les positions sont présentes
+                const hasAllPositions = psgLineup.gk && psgLineup.df && psgLineup.mf && psgLineup.fw;
+                const hasAllPlayers = hasAllPositions && 
+                    Array.isArray(psgLineup.gk) && psgLineup.gk.length > 0 &&
+                    Array.isArray(psgLineup.df) && psgLineup.df.length > 0 &&
+                    Array.isArray(psgLineup.mf) && psgLineup.mf.length > 0 &&
+                    Array.isArray(psgLineup.fw) && psgLineup.fw.length > 0;
                 
-                psgContainer.innerHTML = positions.map(pos => `
-                    <div class="flex items-start gap-3 glass p-3 rounded-lg">
-                        <span class="font-mono text-gray-400 min-w-[28px]">${pos.code}</span>
-                        <span class="font-semibold leading-relaxed">${pos.players.join(', ')}</span>
-                    </div>
-                `).join('');
+                if (hasAllPlayers) {
+                    console.log('✅ Composition PSG trouvée:', psgLineup);
+                    const positions = [
+                        { code: 'GK', players: psgLineup.gk },
+                        { code: 'DF', players: psgLineup.df },
+                        { code: 'MF', players: psgLineup.mf },
+                        { code: 'FW', players: psgLineup.fw }
+                    ];
+                    
+                    psgContainer.innerHTML = positions.map(pos => `
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">${pos.code}</span>
+                            <span class="font-semibold leading-relaxed">${pos.players.join(', ')}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    console.warn('⚠️ Composition PSG incomplète');
+                    psgContainer.innerHTML = '<div class="text-gray-500 italic text-center py-4">⚠️ Composition incomplète - Groq n\'a pas pu générer tous les joueurs</div>';
+                }
             }
             
             // Mettre à jour la composition adverse
@@ -959,12 +1087,35 @@
             const awayContainer = document.getElementById('lineup-away');
             
             if (awayContainer && awayLineup) {
-                const positions = [
-                    { code: 'GK', players: awayLineup.gk },
-                    { code: 'DF', players: awayLineup.df },
-                    { code: 'MF', players: awayLineup.mf },
-                    { code: 'FW', players: awayLineup.fw }
-                ];
+                // Vérifier que toutes les positions sont présentes
+                const hasAllPositions = awayLineup.gk && awayLineup.df && awayLineup.mf && awayLineup.fw;
+                const hasAllPlayers = hasAllPositions && 
+                    Array.isArray(awayLineup.gk) && awayLineup.gk.length > 0 &&
+                    Array.isArray(awayLineup.df) && awayLineup.df.length > 0 &&
+                    Array.isArray(awayLineup.mf) && awayLineup.mf.length > 0 &&
+                    Array.isArray(awayLineup.fw) && awayLineup.fw.length > 0;
+                
+                if (hasAllPlayers) {
+                    console.log('✅ Composition adverse trouvée:', awayLineup);
+                    const positions = [
+                        { code: 'GK', players: awayLineup.gk },
+                        { code: 'DF', players: awayLineup.df },
+                        { code: 'MF', players: awayLineup.mf },
+                        { code: 'FW', players: awayLineup.fw }
+                    ];
+                    
+                    awayContainer.innerHTML = positions.map(pos => `
+                        <div class="flex items-start gap-3 glass p-3 rounded-lg">
+                            <span class="font-mono text-gray-400 min-w-[28px]">${pos.code}</span>
+                            <span class="font-semibold leading-relaxed">${pos.players.join(', ')}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    console.warn('⚠️ Composition adverse incomplète');
+                    awayContainer.innerHTML = '<div class="text-gray-500 italic text-center py-4">⚠️ Composition incomplète - Groq n\'a pas pu générer tous les joueurs</div>';
+                }
+            }
+        }
                 
                 awayContainer.innerHTML = positions.map(pos => `
                     <div class="flex items-start gap-3 glass p-3 rounded-lg">
